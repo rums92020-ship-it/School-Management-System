@@ -1,24 +1,39 @@
 
     const groups = [
       { name: "Dashboard", icon: "▦", items: ["Overview", "Attendance Statistics", "Recent Activities"] },
-      { name: "Students", icon: "♙", items: ["Student List", "Add Student", "Student Enrollment", "Import from Excel", "Student Documents"] },
+      { name: "Students", icon: "♙", items: ["Student List", "Add Students", "Student Enrollment", "Import from Excel", "Student Documents"] },
       { name: "Teachers", icon: "♧", items: ["Teacher List", "Assign Subject", "Teacher Schedule"] },
       { name: "Classes", icon: "▤", items: ["Classes", "Study Levels", "Sections", "Student Assignment"] },
       { name: "Academics", icon: "▱", items: ["Subject List", "Class Timetable", "Exam Schedule", "Student Results"] },
-      { name: "Attendance", icon: "◷", items: ["Take Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports"] },
+      { name: "Attendance", icon: "◷", items: ["Take Attendance", "QR Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports"] },
       { name: "Finance", icon: "$", items: ["School Fees", "Student Payments", "Invoices", "Expenses", "Financial Reports"] },
       { name: "Community", icon: "♧", items: ["Parent List", "Announcements", "Messages", "School Events"] },
       { name: "Library", icon: "▣", items: ["Books", "Borrow Books", "Return Books", "Library Reports"] },
       { name: "Reports & settings", icon: "⚙", items: ["Student Reports", "Academic Reports", "User Management", "School Information"] },
       { name: "Telegram Integration", icon: "➤", items: ["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"] }
     ];
-    const studyLevels = ["Vocational", "Associate Degree", "Bachelor Degree"];
+    const studyLevelsStorageKey = "iti-management-study-levels";
+    const defaultStudyLevels = [
+      "C1",
+      "C2",
+      "C3",
+      "Higher Diploma",
+      "Bachelor"
+    ];
+    let studyLevels = [];
+    const studentMajors = [
+      "សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ខាន",
+      "ការថែទាំ និងជួសជុលរថយន្ត",
+      "មេកានិកឧស្សាហកម្ម",
+      "ការដំឡើង និងជួសជុលរថយន្ត",
+      "ការថែទាំ និងជួសជុលរថយន្តអគ្គិសនី"
+    ];
     const students = [
-      { id: "ST-2401", name: "Sok Dara", gender: "Female", className: "Vocational", parentNumber: "012 345 678", phone: "012 345 678", status: "Active" },
-      { id: "ST-2402", name: "Chan Rith", gender: "Male", className: "Associate Degree", parentNumber: "097 222 111", phone: "097 222 111", status: "Active" },
-      { id: "ST-2403", name: "Kim Sreyneang", gender: "Female", className: "Bachelor Degree", parentNumber: "096 888 222", phone: "096 888 222", status: "Pending" },
-      { id: "ST-2404", name: "Vannak Chea", gender: "Male", className: "Vocational", parentNumber: "012 555 340", phone: "012 555 340", status: "Active" },
-      { id: "ST-2405", name: "Srey Mom", gender: "Female", className: "Bachelor Degree", parentNumber: "088 444 190", phone: "088 444 190", status: "Active" }
+      { id: "ST-2401", name: "Sok Dara", nameEnglish: "Sok Dara", nameKhmer: "សុខ ដារា", gender: "Female", className: "Vocational", major: "សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ខាន", parentNumber: "012 345 678", phone: "012 345 678", status: "Active" },
+      { id: "ST-2402", name: "Chan Rith", nameEnglish: "Chan Rith", nameKhmer: "ចាន់ រិទ្ធ", gender: "Male", className: "Associate Degree", major: "ការថែទាំ និងជួសជុលរថយន្ត", parentNumber: "097 222 111", phone: "097 222 111", status: "Active" },
+      { id: "ST-2403", name: "Kim Sreyneang", nameEnglish: "Kim Sreyneang", nameKhmer: "គីម ស្រីនាង", gender: "Female", className: "Bachelor Degree", major: "មេកានិកឧស្សាហកម្ម", parentNumber: "096 888 222", phone: "096 888 222", status: "Pending" },
+      { id: "ST-2404", name: "Vannak Chea", nameEnglish: "Vannak Chea", nameKhmer: "វណ្ណៈ ឈាវ", gender: "Male", className: "Vocational", major: "ការដំឡើង និងជួសជុលរថយន្ត", parentNumber: "012 555 340", phone: "012 555 340", status: "Active" },
+      { id: "ST-2405", name: "Srey Mom", nameEnglish: "Srey Mom", nameKhmer: "ស្រី ម៉ម", gender: "Female", className: "Bachelor Degree", major: "ការថែទាំ និងជួសជុលរថយន្តអគ្គិសនី", parentNumber: "088 444 190", phone: "088 444 190", status: "Active" }
     ];
     const studentStorageKey = "iti-management-students";
     let importPreview = null;
@@ -47,7 +62,12 @@
     let currentPage = "Overview";
     let currentGroup = "Dashboard";
     let toastTimer;
-    let currentLanguage = localStorage.getItem("iti-language") || "en";
+    let currentLanguage = "en";
+    const authStorageKey = "iti-management-session";
+    const demoUsers = [
+      { username: "admin", password: "admin123", name: "Sokha Rath", role: "School Administrator" }
+    ];
+    let currentUser = null;
 
     const uiText = {
       "dashboard.greeting": { en: "Good morning, Sokha 👋", km: "សួស្តី សុខា 👋" },
@@ -68,9 +88,9 @@
       "export.csv": { en: "↓ Export CSV", km: "↓ ទាញចេញ CSV" },
       "filter.students": { en: "Filter students...", km: "ស្វែងរកសិស្ស..." },
       "student.id": { en: "Student ID", km: "លេខសិស្ស" },
-      "student.name": { en: "Student name", km: "ឈ្មោះសិស្ស" },
+      "student.name": { en: "Name English / Khmer", km: "ឈ្មោះអង់គ្លេស / ខ្មែរ" },
       "student.gender": { en: "Gender", km: "ភេទ" },
-      "student.class": { en: "Class", km: "ថ្នាក់" },
+      "student.class": { en: "Study level", km: "កម្រិតសិក្សា" },
       "student.dob": { en: "Date of birth", km: "ថ្ងៃខែឆ្នាំកំណើត" },
       "student.birthplace": { en: "Place of birth", km: "ទីកន្លែងកំណើត" },
       "student.personal.number": { en: "Personal number", km: "លេខឯកត្ត" },
@@ -88,8 +108,10 @@
       "modal.student.title": { en: "Add a student", km: "បន្ថែមសិស្ស" },
       "modal.student.subtitle": { en: "Enter the student's details. Personal information is saved in this browser.", km: "បញ្ចូលព័ត៌មានសិស្ស។ ព័ត៌មានផ្ទាល់ខ្លួនត្រូវបានរក្សាទុកក្នុងកម្មវិធីនេះ។" },
       "field.full.name": { en: "Full name", km: "ឈ្មោះពេញ" },
+      "field.name.khmer": { en: "Name (Khmer)", km: "ឈ្មោះជាភាសាខ្មែរ" },
+      "field.name.english": { en: "Name (English)", km: "ឈ្មោះជាភាសាអង់គ្លេស" },
       "field.gender": { en: "Gender", km: "ភេទ" },
-      "field.class.level": { en: "Class / level", km: "ថ្នាក់ / កម្រិត" },
+      "field.class.level": { en: "Study level", km: "កម្រិតសិក្សា" },
       "field.date.of.birth": { en: "Date of birth", km: "ថ្ងៃខែឆ្នាំកំណើត" },
       "field.place.of.birth": { en: "Place of birth", km: "ទីកន្លែងកំណើត" },
       "field.personal.number": { en: "Personal number", km: "លេខឯកត្ត" },
@@ -117,6 +139,7 @@
       "Recent Activities": { en: "Recent Activities", km: "សកម្មភាពថ្មីៗ" },
       "Student List": { en: "Student List", km: "បញ្ជីសិស្ស" },
       "Add Student": { en: "Add Student", km: "បន្ថែមសិស្ស" },
+      "Add Students": { en: "Add Students", km: "បន្ថែមសិស្ស" },
       "Student Enrollment": { en: "Student Enrollment", km: "ចុះឈ្មោះសិស្ស" },
       "Import from Excel": { en: "Import from Excel", km: "នាំចូលពី Excel" },
       "Student Documents": { en: "Student Documents", km: "ឯកសារសិស្ស" },
@@ -131,6 +154,7 @@
       "Exam Schedule": { en: "Exam Schedule", km: "កាលវិភាគប្រឡង" },
       "Student Results": { en: "Student Results", km: "លទ្ធផលសិស្ស" },
       "Take Attendance": { en: "Take Attendance", km: "កត់ប្រចាំ" },
+      "QR Attendance": { en: "QR Attendance", km: "QR ការចូលរួម" },
       "Daily Attendance": { en: "Daily Attendance", km: "ការចូលរួមប្រចាំថ្ងៃ" },
       "Monthly Attendance": { en: "Monthly Attendance", km: "ការចូលរួមប្រចាំខែ" },
       "Attendance Reports": { en: "Attendance Reports", km: "របាយការណ៍ចូលរួម" },
@@ -185,10 +209,100 @@
       return text ? (text[currentLanguage] || text.en) : key;
     }
 
+    function getStoredUser() {
+      try {
+        const stored = localStorage.getItem(authStorageKey);
+        if (!stored) return null;
+        const parsed = JSON.parse(stored);
+        if (!parsed || typeof parsed.username !== "string" || typeof parsed.name !== "string") return null;
+        return parsed;
+      } catch (error) {
+        console.error("Could not read saved session.", error);
+        return null;
+      }
+    }
+
+    function persistSession(user) {
+      currentUser = user;
+      try {
+        localStorage.setItem(authStorageKey, JSON.stringify(user));
+        return true;
+      } catch (error) {
+        console.error("Could not save login session.", error);
+        return false;
+      }
+    }
+
+    function clearSession() {
+      currentUser = null;
+      localStorage.removeItem(authStorageKey);
+    }
+
+    function updateUserProfile() {
+      const profileName = document.querySelector(".profile-copy strong");
+      const profileRole = document.querySelector(".profile-copy small");
+      const avatar = document.querySelector(".avatar");
+      const logoutButton = document.getElementById("logout-button");
+      const loginScreen = document.getElementById("login-screen");
+      const appShell = document.getElementById("app-shell");
+      if (!profileName || !profileRole || !avatar || !logoutButton || !loginScreen || !appShell) return;
+
+      if (!currentUser) {
+        profileName.textContent = "SOK RUM";
+        profileRole.textContent = "School Administrator";
+        avatar.textContent = "SR";
+        logoutButton.style.display = "none";
+        appShell.classList.add("hidden");
+        loginScreen.classList.remove("hidden");
+        return;
+      }
+
+      const initials = currentUser.name.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
+      profileName.textContent = currentUser.name;
+      profileRole.textContent = currentUser.role || "School Administrator";
+      avatar.textContent = initials || "SR";
+      logoutButton.style.display = "inline-grid";
+      appShell.classList.remove("hidden");
+      loginScreen.classList.add("hidden");
+    }
+
+    function handleLogin(event) {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      const username = String(form.get("username") || "").trim();
+      const password = String(form.get("password") || "");
+      const user = demoUsers.find(account => account.username === username && account.password === password);
+      const errorMessage = document.getElementById("login-error");
+      if (!user) {
+        errorMessage.textContent = "Invalid username or password. Use the demo account shown below.";
+        errorMessage.hidden = false;
+        return;
+      }
+      errorMessage.textContent = "";
+      errorMessage.hidden = true;
+      const sessionSaved = persistSession({ username: user.username, name: user.name, role: user.role });
+      updateUserProfile();
+      navigate("Overview", "Dashboard");
+      showToast(sessionSaved
+        ? `Welcome back, ${user.name}.`
+        : `Welcome back, ${user.name}. Your session could not be saved, so you may need to log in again after refreshing.`);
+    }
+
+    function logout() {
+      clearSession();
+      currentPage = "Overview";
+      updateUserProfile();
+      showToast("You have been logged out.");
+    }
+
     function setLanguage(language) {
       if (!["en", "km"].includes(language)) return;
       currentLanguage = language;
-      localStorage.setItem("iti-language", language);
+      try {
+        localStorage.setItem("iti-language", language);
+      } catch (error) {
+        console.error("Could not save language preference.", error);
+      }
       const toggle = document.getElementById("language-toggle");
       if (toggle) {
         toggle.textContent = language === "en" ? "ខ្មែរ" : "EN";
@@ -204,6 +318,8 @@
       nav.innerHTML = "";
       buildNavigation();
       if (currentPage === "Overview") dashboard();
+      else if (currentPage === "Study Levels") renderStudyLevels();
+      else if (currentPage === "QR Attendance") renderQrAttendance();
       else if (currentPage === "Student List") renderStudents();
       else if (currentPage === "Teacher List") renderTeachers();
       else if (currentPage === "Take Attendance") renderAttendance();
@@ -228,6 +344,29 @@
       })[char]);
     }
 
+    function loadStudyLevels() {
+      try {
+        const stored = localStorage.getItem(studyLevelsStorageKey);
+        const parsed = stored ? JSON.parse(stored) : [];
+        if (stored && !Array.isArray(parsed)) throw new Error("Saved study levels have an invalid format.");
+        const cleaned = Array.isArray(parsed) ? parsed.map(level => String(level || "").trim()).filter(Boolean) : [];
+        return [...new Set([...defaultStudyLevels, ...cleaned])];
+      } catch (error) {
+        console.error("Could not load study levels.", error);
+        return [...defaultStudyLevels];
+      }
+    }
+
+    function saveStudyLevels() {
+      try {
+        localStorage.setItem(studyLevelsStorageKey, JSON.stringify(studyLevels));
+        return true;
+      } catch (error) {
+        console.error("Could not save study levels.", error);
+        return false;
+      }
+    }
+
     function loadStudentRecords() {
       try {
         const stored = localStorage.getItem(studentStorageKey);
@@ -235,12 +374,18 @@
         const parsed = JSON.parse(stored);
         if (!Array.isArray(parsed)) throw new Error("Saved student data has an invalid format.");
         return parsed.filter(student =>
-          student && typeof student.id === "string" && typeof student.name === "string" && typeof student.className === "string"
+          student && typeof student.id === "string" && (typeof student.name === "string" || typeof student.nameEnglish === "string") && typeof student.className === "string"
         ).map(student => ({
           id: student.id,
-          name: student.name,
+          name: typeof student.nameEnglish === "string" ? student.nameEnglish : student.name,
+          nameEnglish: typeof student.nameEnglish === "string" ? student.nameEnglish : student.name,
+          nameKhmer: typeof student.nameKhmer === "string" ? student.nameKhmer : "",
           gender: typeof student.gender === "string" ? student.gender : "Not specified",
           className: student.className,
+          major: typeof student.major === "string" ? student.major : "",
+          studyShift: typeof student.studyShift === "string" ? student.studyShift : "",
+          studentGroup: typeof student.studentGroup === "string" ? student.studentGroup : "",
+          grade: typeof student.grade === "string" ? student.grade : "",
           dateOfBirth: typeof student.dateOfBirth === "string" ? student.dateOfBirth : "",
           placeOfBirth: typeof student.placeOfBirth === "string" ? student.placeOfBirth : "",
           personalNumber: typeof student.personalNumber === "string" ? student.personalNumber : "",
@@ -359,17 +504,20 @@
     }
 
     function studentRow(student) {
-      const initials = student.name.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
+      const englishName = student.nameEnglish || student.name || "";
+      const initials = englishName.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
       const status = student.status === "Active" ? t("status.active") : t("status.pending");
-      return `<tr><td><div class="student-cell"><span class="student-avatar">${escapeHTML(initials)}</span>${escapeHTML(student.name)}</div></td><td>${escapeHTML(student.id)}</td><td>${escapeHTML(student.className)}</td><td><span class="badge ${student.status === "Active" ? "active" : "pending"}">${escapeHTML(status)}</span></td></tr>`;
+      return `<tr><td><div class="student-cell"><span class="student-avatar">${escapeHTML(initials)}</span><span class="student-names"><strong>${escapeHTML(englishName || student.nameKhmer || "")}</strong>${student.nameKhmer ? `<small>${escapeHTML(student.nameKhmer)}</small>` : ""}</span></div></td><td>${escapeHTML(student.id)}</td><td>${escapeHTML(student.className)}</td><td><span class="badge ${student.status === "Active" ? "active" : "pending"}">${escapeHTML(status)}</span></td></tr>`;
     }
 
     function renderStudents(query = "") {
       const normalized = query.trim().toLowerCase();
-      const filtered = students.filter(student => Object.values(student).some(value => String(value ?? "").toLowerCase().includes(normalized)));
-      const rows = filtered.map(student => `<tr><td>${escapeHTML(student.id)}</td><td><div class="student-cell"><span class="student-avatar">${escapeHTML(student.name.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase())}</span>${escapeHTML(student.name)}</div></td><td>${escapeHTML(student.gender)}</td><td>${escapeHTML(student.className)}</td><td>${escapeHTML(student.dateOfBirth || "—")}</td><td>${escapeHTML(student.placeOfBirth || "—")}</td><td>${escapeHTML(student.personalNumber || "—")}</td><td>${escapeHTML(student.parentNumber || student.phone || "—")}</td><td><span class="badge ${student.status === "Active" ? "active" : "pending"}">${escapeHTML(student.status === "Active" ? t("status.active") : t("status.pending"))}</span></td></tr>`).join("");
+      const filtered = students.filter(student => Object.values(student).join(" ").toLowerCase().includes(normalized));
+      const rows = filtered.map(student => {
+        return `<tr><td>${escapeHTML(student.id)}</td><td>${escapeHTML(student.nameKhmer || "—")}</td><td>${escapeHTML(student.nameEnglish || student.name || "—")}</td><td>${escapeHTML(student.gender)}</td><td>${escapeHTML(student.className)}</td><td>${escapeHTML(student.major || "—")}</td><td>${escapeHTML(student.studyShift || "—")}</td><td>${escapeHTML(student.studentGroup || "—")}</td><td>${escapeHTML(student.grade || "—")}</td><td>${escapeHTML(student.dateOfBirth || "—")}</td><td>${escapeHTML(student.placeOfBirth || "—")}</td><td>${escapeHTML(student.personalNumber || "—")}</td><td>${escapeHTML(student.parentNumber || student.phone || "—")}</td><td><span class="badge ${student.status === "Active" ? "active" : "pending"}">${escapeHTML(student.status === "Active" ? t("status.active") : t("status.pending"))}</span></td></tr>`;
+      }).join("");
       content.innerHTML = pageHeader(t("student.directory.title"), t("student.directory.subtitle"), `<button class="btn" data-action="add-student">${t("add.student")}</button>`) +
-        `<section class="panel"><div class="list-toolbar"><input id="table-search" class="list-search" type="search" placeholder="${t("filter.students")}" value="${escapeHTML(query)}" aria-label="Filter student list"><div class="toolbar-actions"><button class="btn secondary" data-page="Import from Excel">${t("import.file")}</button><button class="btn secondary" data-action="export-students">${t("export.csv")}</button></div></div><div class="telegram-notice" style="margin-bottom:14px"><strong>Personal data:</strong> Date of birth, place of birth, personal number, and parent number are stored in this browser only. This prototype has no user access controls or secure server storage.</div><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("student.name")}</th><th>${t("student.gender")}</th><th>${t("student.class")}</th><th>${t("student.dob")}</th><th>${t("student.birthplace")}</th><th>${t("student.personal.number")}</th><th>${t("student.parent.number")}</th><th>${t("status")}</th></tr></thead><tbody id="student-rows">${rows || `<tr><td colspan="9"><div class="empty">No students match your search.</div></td></tr>`}</tbody></table></div><div class="page-subtitle" style="margin-top:14px">Showing ${filtered.length} of ${students.length} students</div></section>`;
+        `<section class="panel"><div class="list-toolbar"><input id="table-search" class="list-search" type="search" placeholder="${t("filter.students")}" value="${escapeHTML(query)}" aria-label="Filter student list"><div class="toolbar-actions"><button class="btn secondary" data-page="Import from Excel">${t("import.file")}</button><button class="btn secondary" data-action="export-students">${t("export.csv")}</button></div></div><div class="telegram-notice" style="margin-bottom:14px"><strong>Personal data:</strong> Date of birth, place of birth, personal number, and parent number are stored in this browser only. This prototype has no user access controls or secure server storage.</div><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("field.name.khmer")}</th><th>${t("field.name.english")}</th><th>${t("student.gender")}</th><th>${t("student.class")}</th><th>ជំនាញ</th><th>វេនសិក្សា</th><th>ក្រុម</th><th>និទ្ទេស</th><th>${t("student.dob")}</th><th>${t("student.birthplace")}</th><th>${t("student.personal.number")}</th><th>${t("student.parent.number")}</th><th>${t("status")}</th></tr></thead><tbody id="student-rows">${rows || `<tr><td colspan="14"><div class="empty">No students match your search.</div></td></tr>`}</tbody></table></div><div class="page-subtitle" style="margin-top:14px">Showing ${filtered.length} of ${students.length} students</div></section>`;
       const filter = document.getElementById("table-search");
       filter.addEventListener("input", () => renderStudents(filter.value));
       filter.focus({ preventScroll: true });
@@ -403,7 +551,7 @@
             <section class="panel">
               <div class="panel-head"><div><h2>Spreadsheet format</h2><p>Use a header row with these columns.</p></div></div>
               <ul class="import-hints">
-                <li><strong>Student Name</strong> — required</li>
+                <li><strong>Name Khmer</strong> or <strong>Name English</strong> — at least one required</li>
                 <li><strong>Class</strong> — required</li>
                 <li>Student ID — optional</li>
                 <li>Date of Birth, Place of Birth — optional</li>
@@ -505,31 +653,38 @@
         });
         const aliases = {
           id: ["student id", "id", "student number", "student code"],
-          name: ["student name", "full name", "name", "student"],
+          nameEnglish: ["name english", "english name", "student name english", "student name", "full name", "name", "student"],
+          nameKhmer: ["name khmer", "khmer name", "student name khmer"],
           gender: ["gender", "sex"],
           className: ["class", "class name", "grade", "section", "grade level"],
+          major: ["major", "specialty", "specialization", "skill", "field of study", "career", "training program", "ជំនាញ"],
+          studyShift: ["study shift", "shift", "schedule", "វេនសិក្សា", "វេន សិក្សា"],
+          studentGroup: ["student group", "group", "ក្រុម"],
+          grade: ["grade", "rating", "result", "និទ្ទេស"],
           dateOfBirth: ["date of birth", "date of birth (yyyy mm dd)", "dob", "birth date"],
           placeOfBirth: ["place of birth", "birthplace", "birth place"],
           personalNumber: ["personal number", "personal no", "national id", "personal id"],
           parentNumber: ["parent number", "parent phone", "parent phone number", "phone", "phone number", "contact", "contact number"],
           status: ["status", "enrollment status"]
         };
-        if (!aliases.name.some(alias => headerIndexes.has(alias)) || !aliases.className.some(alias => headerIndexes.has(alias))) {
-          throw new Error("Required columns are missing. Include Student Name and Class in the header row.");
+        if (![...aliases.nameEnglish, ...aliases.nameKhmer].some(alias => headerIndexes.has(alias)) || !aliases.className.some(alias => headerIndexes.has(alias))) {
+          throw new Error("Required columns are missing. Include a Khmer or English student name and Class in the header row.");
         }
         const staged = [];
         const errors = [];
         const seenIds = new Set(students.map(student => student.id.toLowerCase()));
-        const seenNameClasses = new Set(students.map(student => `${student.name.trim().toLowerCase()}|${student.className.trim().toLowerCase()}`));
+        const seenNameClasses = new Set(students.map(student => `${(student.nameEnglish || student.name).trim().toLowerCase()}|${student.className.trim().toLowerCase()}`));
         rows.slice(1).forEach((row, index) => {
           if (!row.some(value => String(value || "").trim())) return;
           const rowNumber = index + 2;
-          const name = readCell(row, headerIndexes, aliases.name);
+          const nameEnglish = readCell(row, headerIndexes, aliases.nameEnglish);
+          const nameKhmer = readCell(row, headerIndexes, aliases.nameKhmer);
           const className = readCell(row, headerIndexes, aliases.className);
-          if (!name || !className) {
-            errors.push(`Row ${rowNumber}: Student Name and Class are required.`);
+          if ((!nameEnglish && !nameKhmer) || !className) {
+            errors.push(`Row ${rowNumber}: at least one student name (Khmer or English) and Class are required.`);
             return;
           }
+          const name = nameEnglish || nameKhmer;
           const existingId = readCell(row, headerIndexes, aliases.id);
           const normalizedId = existingId.toLowerCase();
           const nameClassKey = `${name.toLowerCase()}|${className.toLowerCase()}`;
@@ -541,8 +696,14 @@
           const student = {
             id: studentId,
             name,
+            nameEnglish,
+            nameKhmer,
             gender: readCell(row, headerIndexes, aliases.gender) || "Not specified",
             className,
+            major: readCell(row, headerIndexes, aliases.major) || "",
+            studyShift: readCell(row, headerIndexes, aliases.studyShift) || "",
+            studentGroup: readCell(row, headerIndexes, aliases.studentGroup) || "",
+            grade: readCell(row, headerIndexes, aliases.grade) || "",
             dateOfBirth: readCell(row, headerIndexes, aliases.dateOfBirth),
             placeOfBirth: readCell(row, headerIndexes, aliases.placeOfBirth),
             personalNumber: readCell(row, headerIndexes, aliases.personalNumber),
@@ -568,21 +729,21 @@
       const preview = document.getElementById("import-preview");
       const validRows = importPreview.students;
       const previewRows = validRows.slice(0, 8).map(student =>
-        `<tr><td>${escapeHTML(student.id)}</td><td>${escapeHTML(student.name)}</td><td>${escapeHTML(student.dateOfBirth || "—")}</td><td>${escapeHTML(student.placeOfBirth || "—")}</td><td>${escapeHTML(student.personalNumber || "—")}</td><td>${escapeHTML(student.parentNumber || student.phone || "—")}</td></tr>`
+        `<tr><td>${escapeHTML(student.id)}</td><td>${escapeHTML(student.nameKhmer || "—")}</td><td>${escapeHTML(student.nameEnglish || (!student.nameKhmer ? student.name : "") || "—")}</td><td>${escapeHTML(student.className || "—")}</td><td>${escapeHTML(student.major || "—")}</td><td>${escapeHTML(student.studyShift || "—")}</td><td>${escapeHTML(student.studentGroup || "—")}</td><td>${escapeHTML(student.grade || "—")}</td><td>${escapeHTML(student.dateOfBirth || "—")}</td><td>${escapeHTML(student.placeOfBirth || "—")}</td><td>${escapeHTML(student.personalNumber || "—")}</td><td>${escapeHTML(student.parentNumber || student.phone || "—")}</td></tr>`
       ).join("");
       const errors = importPreview.errors.length
         ? `<ul class="import-error-list">${importPreview.errors.slice(0, 12).map(error => `<li>${escapeHTML(error)}</li>`).join("")}${importPreview.errors.length > 12 ? `<li>And ${importPreview.errors.length - 12} more row issue(s).</li>` : ""}</ul>`
         : "";
       preview.innerHTML = `<div class="import-summary"><span class="import-count"><strong>${totalRows}</strong> rows read</span><span class="import-count good"><strong>${validRows.length}</strong> ready to import</span><span class="import-count ${importPreview.errors.length ? "bad" : ""}"><strong>${importPreview.errors.length}</strong> skipped</span></div>
         <p class="page-subtitle">Preview of ${escapeHTML(importPreview.fileName)}${validRows.length > 8 ? ` · first 8 of ${validRows.length} valid records` : ""}</p>
-        <div class="table-wrap"><table class="table"><thead><tr><th>Student ID</th><th>Student name</th><th>Date of birth</th><th>Place of birth</th><th>Personal number</th><th>Parent number</th></tr></thead><tbody>${previewRows || `<tr><td colspan="6"><div class="empty">There are no valid rows to import.</div></td></tr>`}</tbody></table></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Student ID</th><th>Name Khmer</th><th>Name English</th><th>Class</th><th>Major</th><th>វេនសិក្សា</th><th>ក្រុម</th><th>និទ្ទេស</th><th>Date of birth</th><th>Place of birth</th><th>Personal number</th><th>Parent number</th></tr></thead><tbody>${previewRows || `<tr><td colspan="12"><div class="empty">There are no valid rows to import.</div></td></tr>`}</tbody></table></div>
         ${errors}<div class="import-actions"><button type="button" class="btn secondary" data-action="cancel-import">Cancel</button><button type="button" class="btn" data-action="confirm-import" ${validRows.length ? "" : "disabled"}>Import ${validRows.length} students</button></div>`;
     }
 
     function downloadImportTemplate() {
       const csv = [
-        ["Student ID", "Student Name", "Gender", "Class", "Date of Birth", "Place of Birth", "Personal Number", "Parent Number", "Status"],
-        ["ST-2501", "Dara Sok", "Female", "Vocational", "2013-04-12", "Phnom Penh", "0123456789", "012 345 678", "Active"]
+        ["Student ID", "Name Khmer", "Name English", "Gender", "Class", "Major", "Study Shift", "Group", "Grade", "Date of Birth", "Place of Birth", "Personal Number", "Parent Number", "Status"],
+        ["ST-2501", "ដារា សុខ", "Dara Sok", "Female", "C1", "សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ខាន", "ចន្ទ សុក្រ (ព្រឹក-រសៀល)", "ទី១", "A", "2013-04-12", "Phnom Penh", "0123456789", "012 345 678", "Active"]
       ].map(row => row.map(value => `"${value.replace(/"/g, '""')}"`).join(",")).join("\r\n");
       const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
       const link = document.createElement("a");
@@ -613,7 +774,9 @@
         const choices = ["Present", "Absent", "Late"].map(value =>
           `<label><input type="radio" name="attendance-${escapeHTML(student.id)}" value="${value}" ${selected === value ? "checked" : ""}> ${value}</label>`
         ).join("");
-        return `<tr data-student-id="${escapeHTML(student.id)}" data-class="${escapeHTML(student.className)}"><td><div class="student-cell"><span class="student-avatar">${escapeHTML(student.name.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase())}</span>${escapeHTML(student.name)}</div></td><td>${escapeHTML(student.className)}</td><td><div class="attendance-choice">${choices}</div></td></tr>`;
+        const englishName = student.nameEnglish || student.name || student.nameKhmer || "";
+        const initials = englishName.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
+        return `<tr data-student-id="${escapeHTML(student.id)}" data-class="${escapeHTML(student.className)}"><td><div class="student-cell"><span class="student-avatar">${escapeHTML(initials)}</span><span class="student-names"><strong>${escapeHTML(englishName)}</strong>${student.nameKhmer ? `<small>${escapeHTML(student.nameKhmer)}</small>` : ""}</span></div></td><td>${escapeHTML(student.className)}</td><td><div class="attendance-choice">${choices}</div></td></tr>`;
       }).join("");
       content.innerHTML = pageHeader(t("attendance.title"), t("attendance.subtitle")) +
         `<div class="notice">◷ &nbsp; Attendance is recorded for the selected date and study level.</div><section class="panel"><div class="attendance-controls"><div class="field"><label for="attendance-date">Date</label><input id="attendance-date" type="date" value="${date}"></div><div class="field"><label for="attendance-class">Study level</label><select id="attendance-class"><option>All levels</option>${studyLevels.map(level => `<option>${escapeHTML(level)}</option>`).join("")}</select></div><button class="btn" data-action="save-attendance">Save attendance</button></div><div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Study level</th><th>Attendance</th></tr></thead><tbody id="attendance-rows">${rows}</tbody></table></div></section>`;
@@ -628,6 +791,95 @@
         });
       });
       updateAttendanceClass();
+    }
+
+    function getQrLibrary() {
+      if (window.QRCode) return Promise.resolve(window.QRCode);
+      if (window.qrLibraryPromise) return window.qrLibraryPromise;
+      window.qrLibraryPromise = new Promise((resolve, reject) => {
+        const script = document.querySelector("script[src*='qrcode']");
+        if (!script) {
+          reject(new Error("The QR code library is not available."));
+          return;
+        }
+        script.addEventListener("load", () => resolve(window.QRCode), { once: true });
+        script.addEventListener("error", () => reject(new Error("Could not load the QR code library.")), { once: true });
+      });
+      return window.qrLibraryPromise;
+    }
+
+    async function renderQrAttendance() {
+      content.innerHTML = pageHeader("QR Attendance", "Generate attendance QR codes for each student in the school directory.") +
+        `<section class="panel"><div class="panel-head"><div><h2>Student attendance QR codes</h2><p>Scan each QR code to identify a student in an attendance session.</p></div></div><div id="qr-attendance-grid" class="qr-grid"></div></section>`;
+
+      const container = document.getElementById("qr-attendance-grid");
+      if (!container) return;
+
+      try {
+        const QRCode = await getQrLibrary();
+        container.innerHTML = students.map(student => `
+          <div class="qr-card">
+            <div class="qr-box" id="qr-${escapeHTML(student.id)}"></div>
+            <div class="qr-meta">
+              <strong>${escapeHTML(student.nameEnglish || student.name || student.nameKhmer)}</strong>
+              ${student.nameKhmer ? `<small>${escapeHTML(student.nameKhmer)}</small>` : ""}
+              <small>${escapeHTML(student.id)} · ${escapeHTML(student.className)}</small>
+            </div>
+          </div>
+        `).join("");
+
+        for (const student of students) {
+          const target = document.getElementById(`qr-${student.id}`);
+          if (!target) continue;
+          const payload = JSON.stringify({ type: "attendance", id: student.id, name: student.nameEnglish || student.name || student.nameKhmer, nameEnglish: student.nameEnglish || student.name || "", nameKhmer: student.nameKhmer || "", className: student.className, status: student.status || "Active" });
+          QRCode.toDataURL(payload, { margin: 1, width: 170, color: { dark: "#17233c", light: "#ffffff" } })
+            .then(url => {
+              target.innerHTML = `<img src="${url}" alt="QR code for ${escapeHTML(student.name)}" />`;
+            })
+            .catch(error => {
+              console.error("Could not generate QR code.", error);
+              target.innerHTML = `<div class="qr-error">QR unavailable</div>`;
+            });
+        }
+      } catch (error) {
+        console.error("Could not initialize QR attendance.", error);
+        container.innerHTML = `<div class="empty">QR code generation is unavailable in this browser.</div>`;
+      }
+    }
+
+    function renderStudyLevels() {
+      const rows = studyLevels.map((level, index) => `
+        <tr>
+          <td>${escapeHTML(String(index + 1))}</td>
+          <td>${escapeHTML(level)}</td>
+          <td><button type="button" class="btn secondary" data-action="remove-study-level" data-study-level="${escapeHTML(level)}">Remove</button></td>
+        </tr>
+      `).join("");
+
+      content.innerHTML = pageHeader("Study Levels", "Create and manage the levels available in your school.") + `
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Create study level</h2>
+              <p>Add a grade or academic level for your programs.</p>
+            </div>
+          </div>
+          <form id="study-level-form" class="attendance-controls" style="margin-bottom: 16px;">
+            <div class="field" style="flex: 1; min-width: 220px;">
+              <label for="study-level-name">Level name</label>
+              <input id="study-level-name" name="studyLevel" type="text" maxlength="80" placeholder="e.g. បរិញ្ញាបត្របច្ចេកទេស" required>
+            </div>
+            <button type="submit" class="btn">Create level</button>
+          </form>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr><th>#</th><th>Study level</th><th>Action</th></tr>
+              </thead>
+              <tbody>${rows || `<tr><td colspan="3"><div class="empty">No study levels yet.</div></td></tr>`}</tbody>
+            </table>
+          </div>
+        </section>`;
     }
 
     function renderModule(title) {
@@ -747,8 +999,10 @@
       document.getElementById("global-search").value = "";
       closeSearch();
       if (page === "Overview" || group === "Dashboard") dashboard();
+      else if (page === "Study Levels") renderStudyLevels();
+      else if (page === "QR Attendance") renderQrAttendance();
       else if (page === "Student List" || page === "Student Enrollment") renderStudents();
-      else if (page === "Add Student") openStudentModal();
+      else if (page === "Add Student" || page === "Add Students") openStudentModal();
       else if (page === "Import from Excel") renderImportStudents();
       else if (page === "Teacher List") renderTeachers();
       else if (page === "Take Attendance" || page === "Daily Attendance") renderAttendance();
@@ -758,9 +1012,11 @@
 
     function openStudentModal() {
       const modal = document.getElementById("student-modal");
+      const studyLevelSelect = document.getElementById("student-class");
+      studyLevelSelect.innerHTML = `<option value="">${currentLanguage === "km" ? "ជ្រើសរើសកម្រិតសិក្សា" : "Select study level"}</option>${studyLevels.map(level => `<option value="${escapeHTML(level)}">${escapeHTML(level)}</option>`).join("")}`;
       document.getElementById("student-dob").max = localDateValue();
       modal.classList.add("open");
-      setTimeout(() => document.getElementById("student-name").focus(), 0);
+      setTimeout(() => document.getElementById("student-name-khmer").focus(), 0);
     }
     function closeStudentModal() {
       document.getElementById("student-modal").classList.remove("open");
@@ -805,7 +1061,7 @@
     }
 
     function exportStudents() {
-      const rows = [["Student ID", "Student name", "Gender", "Class", "Date of birth", "Place of birth", "Personal number", "Parent number", "Status"], ...students.map(student => [student.id, student.name, student.gender, student.className, student.dateOfBirth || "", student.placeOfBirth || "", student.personalNumber || "", student.parentNumber || student.phone || "", student.status])];
+      const rows = [["Student ID", "Name Khmer", "Name English", "Gender", "Class", "Major", "Study Shift", "Group", "Grade", "Date of birth", "Place of birth", "Personal number", "Parent number", "Status"], ...students.map(student => [student.id, student.nameKhmer || "", student.nameEnglish || (!student.nameKhmer ? student.name : "") || "", student.gender, student.className, student.major || "", student.studyShift || "", student.studentGroup || "", student.grade || "", student.dateOfBirth || "", student.placeOfBirth || "", student.personalNumber || "", student.parentNumber || student.phone || "", student.status])];
       const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\r\n");
       const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
       const link = document.createElement("a");
@@ -832,33 +1088,55 @@
         if (currentPage === "Student List") renderStudents();
         return;
       }
-      const matches = students.filter(student => `${student.name} ${student.id} ${student.className}`.toLowerCase().includes(value)).slice(0, 5);
-      results.innerHTML = matches.length ? matches.map((student, index) => `<button type="button" role="option" data-student-index="${index}"><span class="student-avatar">${escapeHTML(student.name.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase())}</span><span>${escapeHTML(student.name)}<small>${escapeHTML(student.id)} · ${escapeHTML(student.className)}</small></span></button>`).join("") + `<button type="button" data-show-students="true">View all students →</button>` : `<div class="search-empty">No students found. Try another name or class.</div>`;
+      const matches = students.filter(student => `${student.nameKhmer || ""} ${student.nameEnglish || student.name || ""} ${student.id} ${student.className}`.toLowerCase().includes(value)).slice(0, 5);
+      results.innerHTML = matches.length ? matches.map((student, index) => {
+        const englishName = student.nameEnglish || student.name || student.nameKhmer || "";
+        const initials = englishName.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
+        return `<button type="button" role="option" data-student-index="${index}"><span class="student-avatar">${escapeHTML(initials)}</span><span>${escapeHTML(englishName)}${student.nameKhmer ? `<small>${escapeHTML(student.nameKhmer)}</small>` : ""}<small>${escapeHTML(student.id)} · ${escapeHTML(student.className)}</small></span></button>`;
+      }).join("") + `<button type="button" data-show-students="true">View all students →</button>` : `<div class="search-empty">No students found. Try another name or class.</div>`;
       results.classList.add("open");
       results.querySelectorAll("[data-student-index]").forEach(button => button.addEventListener("click", () => {
         const student = matches[Number(button.dataset.studentIndex)];
         navigate("Student List", "Students");
         const filter = document.getElementById("table-search");
         if (filter) {
-          filter.value = student.name;
-          renderStudents(student.name);
+          const query = `${student.nameKhmer || ""} ${student.nameEnglish || student.name || ""}`.trim();
+          filter.value = query;
+          renderStudents(query);
         }
       }));
       const showAll = results.querySelector("[data-show-students]");
       if (showAll) showAll.addEventListener("click", () => navigate("Student List", "Students"));
     }
 
+    studyLevels = loadStudyLevels();
     telegramConfig = loadTelegramConfig();
     const savedStudents = loadStudentRecords();
     if (savedStudents.length) students.splice(0, students.length, ...savedStudents);
     buildNavigation();
-    const initialLanguage = localStorage.getItem("iti-language") || "en";
+    currentUser = getStoredUser();
+    let initialLanguage = "en";
+    try {
+      initialLanguage = localStorage.getItem("iti-language") || "en";
+    } catch (error) {
+      console.error("Could not load language preference.", error);
+    }
     setLanguage(initialLanguage);
+    updateUserProfile();
     document.getElementById("language-toggle").addEventListener("click", () => {
       setLanguage(currentLanguage === "en" ? "km" : "en");
     });
     document.getElementById("today").textContent = new Intl.DateTimeFormat(initialLanguage === "km" ? "km" : "en", { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(new Date());
-    navigate("Overview", "Dashboard");
+    document.getElementById("logout-button").addEventListener("click", logout);
+    document.getElementById("login-form").addEventListener("submit", handleLogin);
+    document.getElementById("login-form").addEventListener("input", () => {
+      const errorMessage = document.getElementById("login-error");
+      errorMessage.textContent = "";
+      errorMessage.hidden = true;
+    });
+    if (currentUser) {
+      navigate("Overview", "Dashboard");
+    }
     document.getElementById("mobile-menu").addEventListener("click", event => {
       const isOpen = sidebar.classList.toggle("open");
       document.getElementById("overlay").classList.toggle("open", isOpen);
@@ -882,12 +1160,21 @@
       }
     });
     document.addEventListener("click", event => {
+      if (!currentUser) return;
       if (!event.target.closest(".search-wrap")) closeSearch();
       const page = event.target.closest("[data-page]");
       if (page) navigate(page.dataset.page);
       const action = event.target.closest("[data-action]");
       if (!action) return;
       if (action.dataset.action === "add-student") openStudentModal();
+      else if (action.dataset.action === "remove-study-level") {
+        const level = action.dataset.studyLevel;
+        if (!level) return;
+        studyLevels = studyLevels.filter(item => item !== level);
+        saveStudyLevels();
+        renderStudyLevels();
+        showToast(`Removed study level: ${level}`);
+      }
       else if (action.dataset.action === "take-attendance") navigate("Take Attendance", "Attendance");
       else if (action.dataset.action === "export-students") exportStudents();
       else if (action.dataset.action === "download-import-template") downloadImportTemplate();
@@ -938,6 +1225,27 @@
       } else if (action.dataset.action === "notify") showToast("This section is ready to be connected to your school data.");
     });
     document.addEventListener("submit", event => {
+      if (!currentUser) return;
+      if (event.target.id === "study-level-form") {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const level = String(form.get("studyLevel") || "").trim();
+        if (!level) {
+          showToast("Please enter a study level name.");
+          return;
+        }
+        const normalized = level.trim();
+        if (studyLevels.includes(normalized)) {
+          showToast("This study level already exists.");
+          return;
+        }
+        studyLevels.push(normalized);
+        saveStudyLevels();
+        event.currentTarget.reset();
+        renderStudyLevels();
+        showToast(`Created study level: ${normalized}`);
+        return;
+      }
       if (event.target.id === "telegram-bot-form") {
         event.preventDefault();
         const username = String(new FormData(event.target).get("username") || "").trim().replace(/^@/, "");
@@ -961,13 +1269,24 @@
     document.getElementById("student-form").addEventListener("submit", event => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      const name = String(form.get("name") || "").trim();
-      if (!name) return;
+      const nameKhmer = String(form.get("nameKhmer") || "").trim();
+      const nameEnglish = String(form.get("nameEnglish") || "").trim();
+      if (!nameKhmer || !nameEnglish) return;
+      const major = String(form.get("major") || "").trim();
+      const studyShift = String(form.get("studyShift") || "").trim();
+      const studentGroup = String(form.get("studentGroup") || "").trim();
+      const grade = String(form.get("grade") || "").trim();
       students.unshift({
         id: createStudentId(new Set(students.map(student => student.id.toLowerCase()))),
-        name,
+        name: nameEnglish,
+        nameKhmer,
+        nameEnglish,
         gender: String(form.get("gender")),
         className: String(form.get("className")),
+        major,
+        studyShift,
+        studentGroup,
+        grade,
         dateOfBirth: String(form.get("dateOfBirth") || ""),
         placeOfBirth: String(form.get("placeOfBirth") || "").trim(),
         personalNumber: String(form.get("personalNumber") || "").trim(),
@@ -979,7 +1298,7 @@
       closeStudentModal();
       event.currentTarget.reset();
       navigate("Student List", "Students");
-      showToast(saved ? `${name} has been added to the student directory.` : `${name} was added for this session, but browser storage failed.`);
+      showToast(saved ? `${nameEnglish} has been added to the student directory.` : `${nameEnglish} was added for this session, but browser storage failed.`);
     });
     document.getElementById("close-modal").addEventListener("click", closeStudentModal);
     document.getElementById("cancel-modal").addEventListener("click", closeStudentModal);
