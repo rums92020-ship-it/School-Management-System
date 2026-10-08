@@ -25,7 +25,7 @@
         </div>
         <p class="login-error" id="login-error" role="alert" hidden></p>
         <button type="submit" class="btn login-btn">Login</button>
-        <p class="demo-account">Demo account: admin / admin123</p>
+        <p class="demo-account">Sign in with the administrator credentials configured on the server.</p>
       </form>
     </div>
   </div>
@@ -36,7 +36,7 @@
         <div class="brand-name">ITI Management System<small>ប្រព័ន្ធគ្រប់គ្រងសាលា</small></div>
       </div>
       <nav class="nav" id="nav"></nav>
-      <div class="sidebar-bottom"><div class="school-year">CURRENT ACADEMIC YEAR<strong>2025 — 2026</strong></div></div>
+      <div class="sidebar-bottom"><div class="school-year">CURRENT ACADEMIC YEAR<strong>Not configured</strong></div></div>
     </aside>
     <button class="overlay" id="overlay" aria-label="Close navigation"></button>
     <main class="main">
@@ -52,8 +52,8 @@
         <button class="icon-button" id="language-toggle" type="button" aria-label="Switch language" title="Switch language">EN</button>
         <button class="icon-button" id="notification-button" aria-label="View notifications" title="Notifications">♧<span class="notification-dot"></span></button>
         <div class="profile">
-          <div class="avatar" aria-hidden="true">SR</div>
-          <div class="profile-copy"><strong>Sokha Rath</strong><small>School Administrator</small></div>
+          <div class="avatar" aria-hidden="true">AD</div>
+          <div class="profile-copy"><strong>Administrator</strong><small>School Administrator</small></div>
         </div>
         <button class="icon-button logout-button" id="logout-button" type="button" aria-label="Logout" title="Logout">↩</button>
       </header>
@@ -80,7 +80,7 @@
             <div class="field"><label for="student-major">Major / Specialty</label><select id="student-major" name="major" required><option value="">Select major</option><option>សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ខាន</option><option>ការថែទាំ និងជួសជុលរថយន្ត</option><option>មេកានិកឧស្សាហកម្ម</option><option>ការដំឡើង និងជួសជុលរថយន្ត</option><option>ការថែទាំ និងជួសជុលរថយន្តអគ្គិសនី</option></select></div>
             <div class="field"><label for="student-shift">វេន សិក្សា</label><select id="student-shift" name="studyShift" required><option value="">ជ្រើសរើសវេនសិក្សា</option><option>ចន្ទ សុក្រ (ព្រឹក-រសៀល)</option><option>ចន្ទ សុក្រ (យប់)</option><option>សៅរ៍ អាទិត្យ (ព្រឹក-រសៀល)</option></select></div>
             <div class="field"><label for="student-group">ក្រុម</label><select id="student-group" name="studentGroup" required><option value="">ជ្រើសរើសក្រុម</option><option>ទី១</option><option>ទី២</option><option>ទី៣</option><option>ទី៤</option><option>ទី៥</option><option>ទី៦</option><option>ទី៧</option><option>ទី៨</option><option>ទី៩</option><option>ទី១០</option></select></div>
-            <div class="field"><label for="student-grade">និទ្ទេស</label><select id="student-grade" name="grade" required><option value="">ជ្រើសរើសនិទ្ទេស</option><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option></select></div>
+            <div class="field"><label for="student-grade">និទ្ទេស (មិនចាំបាច់)</label><select id="student-grade" name="grade"><option value="">គ្មាននិទ្ទេស</option><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option></select></div>
             <div class="field"><label for="student-dob">Date of birth</label><input id="student-dob" name="dateOfBirth" type="date" required></div>
             <div class="field"><label for="student-place-of-birth">Place of birth / Province</label><select id="student-place-of-birth" name="placeOfBirth" required><option value="">Select province</option><option value="Banteay Meanchey">បន្ទាយមានជ័យ (Banteay Meanchey)</option><option value="Battambang">បាត់ដំបង (Battambang)</option><option value="Kampong Cham">កំពង់ចាម (Kampong Cham)</option><option value="Kampong Chhnang">កំពង់ឆ្នាំង (Kampong Chhnang)</option><option value="Kampong Speu">កំពង់ស្ពឺ (Kampong Speu)</option><option value="Kampong Thom">កំពង់ធំ (Kampong Thom)</option><option value="Kampot">កំពត (Kampot)</option><option value="Kandal">កណ្ដាល (Kandal)</option><option value="Kep">កែប (Kep)</option><option value="Koh Kong">កោះកុង (Koh Kong)</option><option value="Kratie">ក្រចេះ (Kratie)</option><option value="Mondulkiri">មណ្ឌលគិរី (Mondulkiri)</option><option value="Oddar Meanchey">ឧត្តរមានជ័យ (Oddar Meanchey)</option><option value="Pailin">ប៉ៃលិន (Pailin)</option><option value="Phnom Penh">ភ្នំពេញ (Phnom Penh)</option><option value="Preah Sihanouk">ព្រះសីហនុ (Preah Sihanouk)</option><option value="Preah Vihear">ព្រះវិហារ (Preah Vihear)</option><option value="Prey Veng">ព្រៃវែង (Prey Veng)</option><option value="Pursat">ពោធិ៍សាត់ (Pursat)</option><option value="Ratanakiri">រតនគិរី (Ratanakiri)</option><option value="Siem Reap">សៀមរាប (Siem Reap)</option><option value="Stung Treng">ស្ទឹងត្រែង (Stung Treng)</option><option value="Svay Rieng">ស្វាយរៀង (Svay Rieng)</option><option value="Takeo">តាកែវ (Takeo)</option><option value="Tboung Khmum">ត្បូងឃ្មុំ (Tboung Khmum)</option></select></div>
             <div class="field"><label for="student-personal-number">Personal number</label><input id="student-personal-number" name="personalNumber" type="text" maxlength="40" autocomplete="off" placeholder="Enter personal number" required></div>

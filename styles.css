@@ -152,7 +152,7 @@
     .feature-card h3 { margin: 15px 0 6px; font-size: 13px; }
     .feature-card p { min-height: 32px; margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
     .notice { margin-bottom: 15px; padding: 13px 15px; border: 1px solid #e6e8ff; border-radius: 11px; background: #f5f5ff; color: #5964bd; font-size: 12px; }
-    .attendance-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 16px; }
+    .attendance-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
     .field { display: grid; gap: 6px; min-width: 160px; }
     .field label { color: #748099; font-size: 11px; font-weight: 650; }
     .field input, .field select { width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }

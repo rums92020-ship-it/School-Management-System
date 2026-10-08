@@ -12,14 +12,6 @@
       { name: "Reports & settings", icon: "⚙", items: ["Student Reports", "Academic Reports", "User Management", "School Information"] },
       { name: "Telegram Integration", icon: "➤", items: ["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"] }
     ];
-    const studyLevelsStorageKey = "iti-management-study-levels";
-    const defaultStudyLevels = [
-      "C1",
-      "C2",
-      "C3",
-      "Higher Diploma",
-      "Bachelor"
-    ];
     let studyLevels = [];
     const studentMajors = [
       "សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ខាន",
@@ -28,31 +20,14 @@
       "ការដំឡើង និងជួសជុលរថយន្ត",
       "ការថែទាំ និងជួសជុលរថយន្តអគ្គិសនី"
     ];
-    const students = [
-      { id: "ST-2401", name: "Sok Dara", nameEnglish: "Sok Dara", nameKhmer: "សុខ ដារា", gender: "Female", className: "Vocational", major: "សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ខាន", parentNumber: "012 345 678", phone: "012 345 678", status: "Active" },
-      { id: "ST-2402", name: "Chan Rith", nameEnglish: "Chan Rith", nameKhmer: "ចាន់ រិទ្ធ", gender: "Male", className: "Associate Degree", major: "ការថែទាំ និងជួសជុលរថយន្ត", parentNumber: "097 222 111", phone: "097 222 111", status: "Active" },
-      { id: "ST-2403", name: "Kim Sreyneang", nameEnglish: "Kim Sreyneang", nameKhmer: "គីម ស្រីនាង", gender: "Female", className: "Bachelor Degree", major: "មេកានិកឧស្សាហកម្ម", parentNumber: "096 888 222", phone: "096 888 222", status: "Pending" },
-      { id: "ST-2404", name: "Vannak Chea", nameEnglish: "Vannak Chea", nameKhmer: "វណ្ណៈ ឈាវ", gender: "Male", className: "Vocational", major: "ការដំឡើង និងជួសជុលរថយន្ត", parentNumber: "012 555 340", phone: "012 555 340", status: "Active" },
-      { id: "ST-2405", name: "Srey Mom", nameEnglish: "Srey Mom", nameKhmer: "ស្រី ម៉ម", gender: "Female", className: "Bachelor Degree", major: "ការថែទាំ និងជួសជុលរថយន្តអគ្គិសនី", parentNumber: "088 444 190", phone: "088 444 190", status: "Active" }
-    ];
-    const studentStorageKey = "iti-management-students";
+    const students = [];
     let importPreview = null;
-    const teachers = [
-      { id: "TC-010", name: "Sok Rum", subject: "Computer Science", className: "Vocational", phone: "012 888 999", status: "Active" },
-      { id: "TC-011", name: "Dara Kim", subject: "Mathematics", className: "Associate Degree", phone: "097 444 222", status: "Active" },
-      { id: "TC-012", name: "Srey Mom", subject: "English", className: "Bachelor Degree", phone: "096 555 333", status: "Active" },
-      { id: "TC-013", name: "Vannak Chea", subject: "Science", className: "Bachelor Degree", phone: "012 777 018", status: "Active" }
-    ];
-    const activities = [
-      ["♙", "New student enrollment completed", "Sok Dara · Vocational · 10 min ago"],
-      ["▤", "Class schedule was updated", "Associate Degree · Mathematics · 35 min ago"],
-      ["✓", "Attendance submitted successfully", "Vocational · Today, 08:15 AM"],
-      ["$", "Tuition payment received", "Invoice #INV-2045 · 2 hours ago"]
-    ];
+    const teachers = [];
     const nav = document.getElementById("nav");
     const content = document.getElementById("content");
     const sidebar = document.getElementById("sidebar");
     const attendanceRecords = new Map();
+    let attendanceTodaySummary = { recorded: 0, present: 0 };
     const telegramStorageKey = "bright-future-telegram-settings";
     const defaultTelegramConfig = {
       botUsername: "",
@@ -63,14 +38,10 @@
     let currentGroup = "Dashboard";
     let toastTimer;
     let currentLanguage = "en";
-    const authStorageKey = "iti-management-session";
-    const demoUsers = [
-      { username: "admin", password: "admin123", name: "Sokha Rath", role: "School Administrator" }
-    ];
     let currentUser = null;
 
     const uiText = {
-      "dashboard.greeting": { en: "Good morning, Sokha 👋", km: "សួស្តី សុខា 👋" },
+      "dashboard.greeting": { en: "Welcome back", km: "សូមស្វាគមន៍ការត្រឡប់មកវិញ" },
       "dashboard.subtitle": { en: "Here’s what’s happening at your school today.", km: "នេះគឺជារឿងដែលកំពុងកើតឡើងនៅសាលារបស់អ្នកថ្ងៃនេះ។" },
       "student.directory.title": { en: "Student directory", km: "បញ្ជីសិស្ស" },
       "student.directory.subtitle": { en: "Manage student records, enrollment, and class assignments.", km: "គ្រប់គ្រងកំណត់ត្រាសិស្ស ចុះឈ្មោះ និងការចាត់តាំងថ្នាក់។" },
@@ -209,35 +180,6 @@
       return text ? (text[currentLanguage] || text.en) : key;
     }
 
-    function getStoredUser() {
-      try {
-        const stored = localStorage.getItem(authStorageKey);
-        if (!stored) return null;
-        const parsed = JSON.parse(stored);
-        if (!parsed || typeof parsed.username !== "string" || typeof parsed.name !== "string") return null;
-        return parsed;
-      } catch (error) {
-        console.error("Could not read saved session.", error);
-        return null;
-      }
-    }
-
-    function persistSession(user) {
-      currentUser = user;
-      try {
-        localStorage.setItem(authStorageKey, JSON.stringify(user));
-        return true;
-      } catch (error) {
-        console.error("Could not save login session.", error);
-        return false;
-      }
-    }
-
-    function clearSession() {
-      currentUser = null;
-      localStorage.removeItem(authStorageKey);
-    }
-
     function updateUserProfile() {
       const profileName = document.querySelector(".profile-copy strong");
       const profileRole = document.querySelector(".profile-copy small");
@@ -248,9 +190,9 @@
       if (!profileName || !profileRole || !avatar || !logoutButton || !loginScreen || !appShell) return;
 
       if (!currentUser) {
-        profileName.textContent = "SOK RUM";
+        profileName.textContent = "Administrator";
         profileRole.textContent = "School Administrator";
-        avatar.textContent = "SR";
+        avatar.textContent = "SA";
         logoutButton.style.display = "none";
         appShell.classList.add("hidden");
         loginScreen.classList.remove("hidden");
@@ -266,30 +208,42 @@
       loginScreen.classList.add("hidden");
     }
 
-    function handleLogin(event) {
+    async function handleLogin(event) {
       event.preventDefault();
       const form = new FormData(event.target);
       const username = String(form.get("username") || "").trim();
       const password = String(form.get("password") || "");
-      const user = demoUsers.find(account => account.username === username && account.password === password);
       const errorMessage = document.getElementById("login-error");
-      if (!user) {
-        errorMessage.textContent = "Invalid username or password. Use the demo account shown below.";
+      try {
+        const result = await apiRequest("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ username, password })
+        });
+        currentUser = result.user;
+        await loadDatabaseData();
+        errorMessage.textContent = "";
+        errorMessage.hidden = true;
+        updateUserProfile();
+        navigate("Overview", "Dashboard");
+        showToast(`Welcome back, ${currentUser.name}.`);
+      } catch (error) {
+        console.error("Could not log in to the school management system.", error);
+        currentUser = null;
+        updateUserProfile();
+        errorMessage.textContent = error.message;
         errorMessage.hidden = false;
-        return;
       }
-      errorMessage.textContent = "";
-      errorMessage.hidden = true;
-      const sessionSaved = persistSession({ username: user.username, name: user.name, role: user.role });
-      updateUserProfile();
-      navigate("Overview", "Dashboard");
-      showToast(sessionSaved
-        ? `Welcome back, ${user.name}.`
-        : `Welcome back, ${user.name}. Your session could not be saved, so you may need to log in again after refreshing.`);
     }
 
-    function logout() {
-      clearSession();
+    async function logout() {
+      try {
+        await apiRequest("/api/auth/logout", { method: "POST" });
+      } catch (error) {
+        console.error("Could not end the school management session.", error);
+        showToast(error.message);
+        return;
+      }
+      currentUser = null;
       currentPage = "Overview";
       updateUserProfile();
       showToast("You have been logged out.");
@@ -344,69 +298,48 @@
       })[char]);
     }
 
-    function loadStudyLevels() {
-      try {
-        const stored = localStorage.getItem(studyLevelsStorageKey);
-        const parsed = stored ? JSON.parse(stored) : [];
-        if (stored && !Array.isArray(parsed)) throw new Error("Saved study levels have an invalid format.");
-        const cleaned = Array.isArray(parsed) ? parsed.map(level => String(level || "").trim()).filter(Boolean) : [];
-        return [...new Set([...defaultStudyLevels, ...cleaned])];
-      } catch (error) {
-        console.error("Could not load study levels.", error);
-        return [...defaultStudyLevels];
+    async function apiRequest(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        credentials: "same-origin",
+        headers: {
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...options.headers
+        }
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        const error = new Error(result.error || `Request failed (${response.status}).`);
+        error.code = result.code;
+        throw error;
       }
+      return result;
     }
 
-    function saveStudyLevels() {
-      try {
-        localStorage.setItem(studyLevelsStorageKey, JSON.stringify(studyLevels));
-        return true;
-      } catch (error) {
-        console.error("Could not save study levels.", error);
-        return false;
-      }
+    async function loadDatabaseData() {
+      const data = await apiRequest(`/api/data?date=${encodeURIComponent(localDateValue())}`);
+      students.splice(0, students.length, ...data.students);
+      teachers.splice(0, teachers.length, ...data.teachers);
+      studyLevels.splice(0, studyLevels.length, ...data.studyLevels);
+      attendanceTodaySummary = data.attendanceToday;
     }
 
-    function loadStudentRecords() {
+    async function restoreSession() {
       try {
-        const stored = localStorage.getItem(studentStorageKey);
-        if (!stored) return [];
-        const parsed = JSON.parse(stored);
-        if (!Array.isArray(parsed)) throw new Error("Saved student data has an invalid format.");
-        return parsed.filter(student =>
-          student && typeof student.id === "string" && (typeof student.name === "string" || typeof student.nameEnglish === "string") && typeof student.className === "string"
-        ).map(student => ({
-          id: student.id,
-          name: typeof student.nameEnglish === "string" ? student.nameEnglish : student.name,
-          nameEnglish: typeof student.nameEnglish === "string" ? student.nameEnglish : student.name,
-          nameKhmer: typeof student.nameKhmer === "string" ? student.nameKhmer : "",
-          gender: typeof student.gender === "string" ? student.gender : "Not specified",
-          className: student.className,
-          major: typeof student.major === "string" ? student.major : "",
-          studyShift: typeof student.studyShift === "string" ? student.studyShift : "",
-          studentGroup: typeof student.studentGroup === "string" ? student.studentGroup : "",
-          grade: typeof student.grade === "string" ? student.grade : "",
-          dateOfBirth: typeof student.dateOfBirth === "string" ? student.dateOfBirth : "",
-          placeOfBirth: typeof student.placeOfBirth === "string" ? student.placeOfBirth : "",
-          personalNumber: typeof student.personalNumber === "string" ? student.personalNumber : "",
-          parentNumber: typeof student.parentNumber === "string" ? student.parentNumber : (typeof student.phone === "string" ? student.phone : ""),
-          phone: typeof student.parentNumber === "string" ? student.parentNumber : (typeof student.phone === "string" ? student.phone : ""),
-          status: typeof student.status === "string" ? student.status : "Active"
-        }));
+        const data = await apiRequest("/api/auth/session");
+        currentUser = data.user;
+        await loadDatabaseData();
+        updateUserProfile();
+        navigate("Overview", "Dashboard");
       } catch (error) {
-        console.error("Could not load saved student records.", error);
-        showToast("Saved student records could not be loaded. Check browser storage.");
-        return [];
-      }
-    }
-
-    function saveStudentRecords() {
-      try {
-        localStorage.setItem(studentStorageKey, JSON.stringify(students));
-        return true;
-      } catch (error) {
-        console.error("Could not save student records.", error);
-        return false;
+        if (error.message !== "Authentication required.") {
+          console.error("Could not restore the school management session.", error);
+          const errorMessage = document.getElementById("login-error");
+          errorMessage.textContent = error.message;
+          errorMessage.hidden = false;
+        }
+        currentUser = null;
+        updateUserProfile();
       }
     }
 
@@ -459,28 +392,33 @@
     }
 
     function dashboard() {
+      const attendancePercent = students.length
+        ? `${Math.round(attendanceTodaySummary.present / students.length * 100)}%`
+        : "—";
+      const attendanceNote = attendanceTodaySummary.recorded
+        ? `${attendanceTodaySummary.recorded} of ${students.length} students recorded`
+        : "No records today";
+      const classCount = new Set(students.map(student => student.className)).size;
       const stats = [
-        [t("stats.totalStudents"), "1,284", "↗ 8.2% this year", "♙"],
-        [t("stats.teachingStaff"), "64", "↗ 3 new this term", "♧"],
-        [t("stats.activeClasses"), "32", "Across 3 study levels", "▤"],
-        [t("stats.attendanceToday"), "94.8%", "↗ 2.4% vs. last week", "◷"]
+        [t("stats.totalStudents"), String(students.length), "Enrolled students", "♙"],
+        [t("stats.teachingStaff"), String(teachers.length), "Teaching staff", "♧"],
+        [t("stats.activeClasses"), String(classCount), "Classes with students", "▤"],
+        [t("stats.attendanceToday"), attendancePercent, attendanceNote, "◷"]
       ];
       const statMarkup = stats.map(([label, value, note, icon]) =>
         `<article class="card stat-card"><div class="stat-top"><span>${escapeHTML(label)}</span><span class="stat-icon" aria-hidden="true">${icon}</span></div><div class="stat-number">${value}</div><div class="stat-note"><span class="trend">${note.startsWith("↗") ? note.slice(0, note.indexOf(" ")) : ""}</span>${note.startsWith("↗") ? note.slice(note.indexOf(" ") + 1) : note}</div></article>`
       ).join("");
-      const chart = [82, 91, 86, 96, 89, 94, 76].map((value, index) =>
-        `<div class="chart-col"><span class="chart-value">${value}%</span><div class="chart-track"><div class="chart-bar ${index === 4 ? "current" : ""}" style="height:${value}%"></div></div><span class="chart-label">${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][index]}</span></div>`
-      ).join("");
-      const activityMarkup = activities.map(([icon, title, detail]) =>
-        `<div class="activity"><div class="activity-icon" aria-hidden="true">${icon}</div><div class="activity-text"><strong>${escapeHTML(title)}</strong><small>${escapeHTML(detail)}</small></div></div>`
-      ).join("");
+      const activityMarkup = `<div class="empty">No recent activities yet.</div>`;
       const recentStudents = students.slice(0, 4).map(student => studentRow(student)).join("");
-      content.innerHTML = pageHeader(t("dashboard.greeting"), t("dashboard.subtitle"), `<button class="btn" data-action="add-student">${t("add.student")}</button>`) +
+      const greeting = currentUser
+        ? `${t("dashboard.greeting")}, ${currentUser.name} 👋`
+        : `${t("dashboard.greeting")} 👋`;
+      content.innerHTML = pageHeader(greeting, t("dashboard.subtitle"), `<button class="btn" data-action="add-student">${t("add.student")}</button>`) +
         `<div class="cards">${statMarkup}</div>
         <div class="dashboard-grid">
           <section class="panel">
             <div class="panel-head"><div><h2>${t("attendance.overview")}</h2><p>${t("attendance.week")}</p></div><select class="select-small" aria-label="Attendance chart period"><option>${t("this.week")}</option><option>${t("this.month")}</option></select></div>
-            <div class="chart" aria-label="Weekly attendance chart">${chart}</div>
+            <div class="empty">Attendance statistics will appear after attendance is recorded.</div>
           </section>
           <section class="panel">
             <div class="panel-head"><div><h2>${t("recent.activity")}</h2><p>${t("recent.activity.subtitle")}</p></div><button class="text-link" data-page="Recent Activities">${t("view.all")}</button></div>
@@ -490,7 +428,7 @@
         <div class="bottom-grid">
           <section class="panel">
             <div class="panel-head"><div><h2>${t("recently.enrolled")}</h2><p>${t("recently.enrolled.subtitle")}</p></div><button class="text-link" data-page="Student List">${t("view.all.students")} →</button></div>
-            <div class="table-wrap"><table class="table"><thead><tr><th>${t("student.label")}</th><th>${t("student.id")}</th><th>${t("student.class")}</th><th>${t("status")}</th></tr></thead><tbody>${recentStudents}</tbody></table></div>
+            <div class="table-wrap"><table class="table"><thead><tr><th>${t("student.label")}</th><th>${t("student.id")}</th><th>${t("student.class")}</th><th>${t("status")}</th></tr></thead><tbody>${recentStudents || `<tr><td colspan="4"><div class="empty">No students enrolled yet.</div></td></tr>`}</tbody></table></div>
           </section>
           <section class="panel">
             <div class="panel-head"><div><h2>${t("quick.actions")}</h2><p>${t("quick.actions.subtitle")}</p></div></div>
@@ -516,8 +454,11 @@
       const rows = filtered.map(student => {
         return `<tr><td>${escapeHTML(student.id)}</td><td>${escapeHTML(student.nameKhmer || "—")}</td><td>${escapeHTML(student.nameEnglish || student.name || "—")}</td><td>${escapeHTML(student.gender)}</td><td>${escapeHTML(student.className)}</td><td>${escapeHTML(student.major || "—")}</td><td>${escapeHTML(student.studyShift || "—")}</td><td>${escapeHTML(student.studentGroup || "—")}</td><td>${escapeHTML(student.grade || "—")}</td><td>${escapeHTML(student.dateOfBirth || "—")}</td><td>${escapeHTML(student.placeOfBirth || "—")}</td><td>${escapeHTML(student.personalNumber || "—")}</td><td>${escapeHTML(student.parentNumber || student.phone || "—")}</td><td><span class="badge ${student.status === "Active" ? "active" : "pending"}">${escapeHTML(student.status === "Active" ? t("status.active") : t("status.pending"))}</span></td></tr>`;
       }).join("");
+      const emptyMessage = students.length
+        ? "No students match your search."
+        : "No students enrolled yet. Add a student or import a spreadsheet.";
       content.innerHTML = pageHeader(t("student.directory.title"), t("student.directory.subtitle"), `<button class="btn" data-action="add-student">${t("add.student")}</button>`) +
-        `<section class="panel"><div class="list-toolbar"><input id="table-search" class="list-search" type="search" placeholder="${t("filter.students")}" value="${escapeHTML(query)}" aria-label="Filter student list"><div class="toolbar-actions"><button class="btn secondary" data-page="Import from Excel">${t("import.file")}</button><button class="btn secondary" data-action="export-students">${t("export.csv")}</button></div></div><div class="telegram-notice" style="margin-bottom:14px"><strong>Personal data:</strong> Date of birth, place of birth, personal number, and parent number are stored in this browser only. This prototype has no user access controls or secure server storage.</div><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("field.name.khmer")}</th><th>${t("field.name.english")}</th><th>${t("student.gender")}</th><th>${t("student.class")}</th><th>ជំនាញ</th><th>វេនសិក្សា</th><th>ក្រុម</th><th>និទ្ទេស</th><th>${t("student.dob")}</th><th>${t("student.birthplace")}</th><th>${t("student.personal.number")}</th><th>${t("student.parent.number")}</th><th>${t("status")}</th></tr></thead><tbody id="student-rows">${rows || `<tr><td colspan="14"><div class="empty">No students match your search.</div></td></tr>`}</tbody></table></div><div class="page-subtitle" style="margin-top:14px">Showing ${filtered.length} of ${students.length} students</div></section>`;
+        `<section class="panel"><div class="list-toolbar"><input id="table-search" class="list-search" type="search" placeholder="${t("filter.students")}" value="${escapeHTML(query)}" aria-label="Filter student list"><div class="toolbar-actions"><button class="btn secondary" data-page="Import from Excel">${t("import.file")}</button><button class="btn secondary" data-action="export-students">${t("export.csv")}</button></div></div><div class="telegram-notice" style="margin-bottom:14px"><strong>Personal data:</strong> Student records are stored in the configured PostgreSQL database and are available to authorized administrators.</div><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("field.name.khmer")}</th><th>${t("field.name.english")}</th><th>${t("student.gender")}</th><th>${t("student.class")}</th><th>ជំនាញ</th><th>វេនសិក្សា</th><th>ក្រុម</th><th>និទ្ទេស</th><th>${t("student.dob")}</th><th>${t("student.birthplace")}</th><th>${t("student.personal.number")}</th><th>${t("student.parent.number")}</th><th>${t("status")}</th></tr></thead><tbody id="student-rows">${rows || `<tr><td colspan="14"><div class="empty">${emptyMessage}</div></td></tr>`}</tbody></table></div><div class="page-subtitle" style="margin-top:14px">Showing ${filtered.length} of ${students.length} students</div></section>`;
       const filter = document.getElementById("table-search");
       filter.addEventListener("input", () => renderStudents(filter.value));
       filter.focus({ preventScroll: true });
@@ -527,7 +468,7 @@
     function renderTeachers() {
       const rows = teachers.map(teacher => `<tr><td>${escapeHTML(teacher.id)}</td><td>${escapeHTML(teacher.name)}</td><td>${escapeHTML(teacher.subject)}</td><td>${escapeHTML(teacher.className)}</td><td>${escapeHTML(teacher.phone)}</td><td><span class="badge active">${t("status.active")}</span></td></tr>`).join("");
       content.innerHTML = pageHeader(t("teacher.directory.title"), t("teacher.directory.subtitle"), `<button class="btn" data-action="notify">${t("add.teacher")}</button>`) +
-        `<section class="panel"><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("student.name")}</th><th>Subject</th><th>${t("student.class")}</th><th>Phone</th><th>${t("status")}</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+        `<section class="panel"><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("student.name")}</th><th>Subject</th><th>${t("student.class")}</th><th>Phone</th><th>${t("status")}</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="empty">No teachers added yet.</div></td></tr>`}</tbody></table></div></section>`;
     }
 
     function renderImportStudents() {
@@ -742,8 +683,7 @@
 
     function downloadImportTemplate() {
       const csv = [
-        ["Student ID", "Name Khmer", "Name English", "Gender", "Class", "Major", "Study Shift", "Group", "Grade", "Date of Birth", "Place of Birth", "Personal Number", "Parent Number", "Status"],
-        ["ST-2501", "ដារា សុខ", "Dara Sok", "Female", "C1", "សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ខាន", "ចន្ទ សុក្រ (ព្រឹក-រសៀល)", "ទី១", "A", "2013-04-12", "Phnom Penh", "0123456789", "012 345 678", "Active"]
+        ["Student ID", "Name Khmer", "Name English", "Gender", "Class", "Major", "Study Shift", "Group", "Grade", "Date of Birth", "Place of Birth", "Personal Number", "Parent Number", "Status"]
       ].map(row => row.map(value => `"${value.replace(/"/g, '""')}"`).join(",")).join("\r\n");
       const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
       const link = document.createElement("a");
@@ -767,6 +707,15 @@
       });
     }
 
+    async function loadAttendanceForDate(date) {
+      const data = await apiRequest(`/api/attendance?date=${encodeURIComponent(date)}`);
+      for (const key of [...attendanceRecords.keys()]) {
+        if (key.startsWith(`${date}|`)) attendanceRecords.delete(key);
+      }
+      data.records.forEach(record => attendanceRecords.set(`${date}|${record.id}`, record.status));
+      return data.records;
+    }
+
     function renderAttendance(selectedClass = "All levels") {
       const date = localDateValue();
       const rows = students.map(student => {
@@ -777,20 +726,36 @@
         const englishName = student.nameEnglish || student.name || student.nameKhmer || "";
         const initials = englishName.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
         return `<tr data-student-id="${escapeHTML(student.id)}" data-class="${escapeHTML(student.className)}"><td><div class="student-cell"><span class="student-avatar">${escapeHTML(initials)}</span><span class="student-names"><strong>${escapeHTML(englishName)}</strong>${student.nameKhmer ? `<small>${escapeHTML(student.nameKhmer)}</small>` : ""}</span></div></td><td>${escapeHTML(student.className)}</td><td><div class="attendance-choice">${choices}</div></td></tr>`;
-      }).join("");
+      }).join("") || `<tr><td colspan="3"><div class="empty">No students available to take attendance.</div></td></tr>`;
       content.innerHTML = pageHeader(t("attendance.title"), t("attendance.subtitle")) +
         `<div class="notice">◷ &nbsp; Attendance is recorded for the selected date and study level.</div><section class="panel"><div class="attendance-controls"><div class="field"><label for="attendance-date">Date</label><input id="attendance-date" type="date" value="${date}"></div><div class="field"><label for="attendance-class">Study level</label><select id="attendance-class"><option>All levels</option>${studyLevels.map(level => `<option>${escapeHTML(level)}</option>`).join("")}</select></div><button class="btn" data-action="save-attendance">Save attendance</button></div><div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Study level</th><th>Attendance</th></tr></thead><tbody id="attendance-rows">${rows}</tbody></table></div></section>`;
       document.getElementById("attendance-class").value = selectedClass;
       document.getElementById("attendance-class").addEventListener("change", updateAttendanceClass);
-      document.getElementById("attendance-date").addEventListener("change", event => {
+      document.getElementById("attendance-date").addEventListener("change", async event => {
         const dateValue = event.target.value;
-        document.querySelectorAll("#attendance-rows tr").forEach(row => {
-          const selected = attendanceRecords.get(`${dateValue}|${row.dataset.studentId}`) || "Present";
-          const radio = row.querySelector(`input[value="${selected}"]`);
-          if (radio) radio.checked = true;
-        });
+        try {
+          await loadAttendanceForDate(dateValue);
+          document.querySelectorAll("#attendance-rows tr").forEach(row => {
+            const selected = attendanceRecords.get(`${dateValue}|${row.dataset.studentId}`) || "Present";
+            const radio = row.querySelector(`input[value="${selected}"]`);
+            if (radio) radio.checked = true;
+          });
+        } catch (error) {
+          console.error("Could not load attendance for the selected date.", error);
+          showToast(error.message);
+        }
       });
       updateAttendanceClass();
+      loadAttendanceForDate(date).then(records => {
+        if (currentPage !== "Take Attendance" && currentPage !== "Daily Attendance") return;
+        records.forEach(record => {
+          const radio = document.querySelector(`#attendance-rows tr[data-student-id="${CSS.escape(record.id)}"] input[value="${CSS.escape(record.status)}"]`);
+          if (radio) radio.checked = true;
+        });
+      }).catch(error => {
+        console.error("Could not load attendance for today.", error);
+        showToast(error.message);
+      });
     }
 
     function getQrLibrary() {
@@ -1109,12 +1074,8 @@
       if (showAll) showAll.addEventListener("click", () => navigate("Student List", "Students"));
     }
 
-    studyLevels = loadStudyLevels();
     telegramConfig = loadTelegramConfig();
-    const savedStudents = loadStudentRecords();
-    if (savedStudents.length) students.splice(0, students.length, ...savedStudents);
     buildNavigation();
-    currentUser = getStoredUser();
     let initialLanguage = "en";
     try {
       initialLanguage = localStorage.getItem("iti-language") || "en";
@@ -1134,9 +1095,6 @@
       errorMessage.textContent = "";
       errorMessage.hidden = true;
     });
-    if (currentUser) {
-      navigate("Overview", "Dashboard");
-    }
     document.getElementById("mobile-menu").addEventListener("click", event => {
       const isOpen = sidebar.classList.toggle("open");
       document.getElementById("overlay").classList.toggle("open", isOpen);
@@ -1159,7 +1117,7 @@
         }
       }
     });
-    document.addEventListener("click", event => {
+    document.addEventListener("click", async event => {
       if (!currentUser) return;
       if (!event.target.closest(".search-wrap")) closeSearch();
       const page = event.target.closest("[data-page]");
@@ -1170,10 +1128,15 @@
       else if (action.dataset.action === "remove-study-level") {
         const level = action.dataset.studyLevel;
         if (!level) return;
-        studyLevels = studyLevels.filter(item => item !== level);
-        saveStudyLevels();
-        renderStudyLevels();
-        showToast(`Removed study level: ${level}`);
+        try {
+          await apiRequest(`/api/study-levels?name=${encodeURIComponent(level)}`, { method: "DELETE" });
+          studyLevels = studyLevels.filter(item => item !== level);
+          renderStudyLevels();
+          showToast(`Removed study level: ${level}`);
+        } catch (error) {
+          console.error("Could not remove study level.", error);
+          showToast(error.message);
+        }
       }
       else if (action.dataset.action === "take-attendance") navigate("Take Attendance", "Attendance");
       else if (action.dataset.action === "export-students") exportStudents();
@@ -1182,13 +1145,19 @@
       else if (action.dataset.action === "confirm-import") {
         if (!importPreview || !importPreview.students.length) return;
         const imported = importPreview.students;
-        imported.slice().reverse().forEach(student => students.unshift(student));
-        importPreview = null;
-        const saved = saveStudentRecords();
-        navigate("Student List", "Students");
-        showToast(saved
-          ? `Imported ${imported.length} student${imported.length === 1 ? "" : "s"} into this browser.`
-          : `Imported ${imported.length} student${imported.length === 1 ? "" : "s"} for this session, but browser storage failed.`);
+        try {
+          await apiRequest("/api/students", {
+            method: "POST",
+            body: JSON.stringify({ students: imported })
+          });
+          imported.slice().reverse().forEach(student => students.unshift(student));
+          importPreview = null;
+          navigate("Student List", "Students");
+          showToast(`Imported ${imported.length} student${imported.length === 1 ? "" : "s"} into PostgreSQL.`);
+        } catch (error) {
+          console.error("Could not import student records.", error);
+          showToast(error.message);
+        }
       }
       else if (action.dataset.action === "test-telegram") showToast("No Telegram backend is connected. Add a secure server endpoint to send messages.");
       else if (action.dataset.action === "copy-parent-instructions") {
@@ -1214,21 +1183,39 @@
           return;
         }
         const visibleRows = [...document.querySelectorAll("#attendance-rows tr")].filter(row => !row.hidden);
+        const records = [];
         const totals = { Present: 0, Absent: 0, Late: 0 };
         visibleRows.forEach(row => {
           const choice = row.querySelector("input:checked");
           if (!choice) return;
-          attendanceRecords.set(`${date}|${row.dataset.studentId}`, choice.value);
+          records.push({ studentId: row.dataset.studentId, status: choice.value });
           totals[choice.value]++;
         });
-        showToast(`Attendance saved: ${totals.Present} present, ${totals.Absent} absent, ${totals.Late} late.`);
+        try {
+          await apiRequest("/api/attendance", {
+            method: "PUT",
+            body: JSON.stringify({ date, records })
+          });
+          records.forEach(record => attendanceRecords.set(`${date}|${record.studentId}`, record.status));
+          if (date === localDateValue()) {
+            attendanceTodaySummary = {
+              recorded: [...attendanceRecords.keys()].filter(key => key.startsWith(`${date}|`)).length,
+              present: [...attendanceRecords.entries()].filter(([key, status]) => key.startsWith(`${date}|`) && status === "Present").length
+            };
+          }
+          showToast(`Attendance saved to PostgreSQL: ${totals.Present} present, ${totals.Absent} absent, ${totals.Late} late.`);
+        } catch (error) {
+          console.error("Could not save attendance records.", error);
+          showToast(error.message);
+        }
       } else if (action.dataset.action === "notify") showToast("This section is ready to be connected to your school data.");
     });
-    document.addEventListener("submit", event => {
+    document.addEventListener("submit", async event => {
       if (!currentUser) return;
       if (event.target.id === "study-level-form") {
         event.preventDefault();
-        const form = new FormData(event.currentTarget);
+        const formElement = event.target;
+        const form = new FormData(formElement);
         const level = String(form.get("studyLevel") || "").trim();
         if (!level) {
           showToast("Please enter a study level name.");
@@ -1239,11 +1226,19 @@
           showToast("This study level already exists.");
           return;
         }
-        studyLevels.push(normalized);
-        saveStudyLevels();
-        event.currentTarget.reset();
-        renderStudyLevels();
-        showToast(`Created study level: ${normalized}`);
+        try {
+          await apiRequest("/api/study-levels", {
+            method: "POST",
+            body: JSON.stringify({ name: normalized })
+          });
+          studyLevels.push(normalized);
+          formElement.reset();
+          renderStudyLevels();
+          showToast(`Created study level: ${normalized}`);
+        } catch (error) {
+          console.error("Could not create study level.", error);
+          showToast(error.message);
+        }
         return;
       }
       if (event.target.id === "telegram-bot-form") {
@@ -1266,9 +1261,10 @@
         if (saved) showToast("Notification preferences saved in this browser.");
       }
     });
-    document.getElementById("student-form").addEventListener("submit", event => {
+    document.getElementById("student-form").addEventListener("submit", async event => {
       event.preventDefault();
-      const form = new FormData(event.currentTarget);
+      const studentForm = event.currentTarget;
+      const form = new FormData(studentForm);
       const nameKhmer = String(form.get("nameKhmer") || "").trim();
       const nameEnglish = String(form.get("nameEnglish") || "").trim();
       if (!nameKhmer || !nameEnglish) return;
@@ -1276,7 +1272,7 @@
       const studyShift = String(form.get("studyShift") || "").trim();
       const studentGroup = String(form.get("studentGroup") || "").trim();
       const grade = String(form.get("grade") || "").trim();
-      students.unshift({
+      const student = {
         id: createStudentId(new Set(students.map(student => student.id.toLowerCase()))),
         name: nameEnglish,
         nameKhmer,
@@ -1293,12 +1289,29 @@
         parentNumber: String(form.get("parentNumber") || "").trim(),
         phone: String(form.get("parentNumber") || "").trim(),
         status: "Active"
-      });
-      const saved = saveStudentRecords();
-      closeStudentModal();
-      event.currentTarget.reset();
-      navigate("Student List", "Students");
-      showToast(saved ? `${nameEnglish} has been added to the student directory.` : `${nameEnglish} was added for this session, but browser storage failed.`);
+      };
+      try {
+        const saveStudent = () => apiRequest("/api/students", {
+          method: "POST",
+          body: JSON.stringify(student)
+        });
+        try {
+          await saveStudent();
+        } catch (error) {
+          if (error.code !== "STUDENT_ID_CONFLICT") throw error;
+          await loadDatabaseData();
+          student.id = createStudentId(new Set(students.map(existing => existing.id.toLowerCase())));
+          await saveStudent();
+        }
+        students.unshift(student);
+        closeStudentModal();
+        studentForm.reset();
+        navigate("Student List", "Students");
+        showToast(`${nameEnglish} has been added to the PostgreSQL student directory.`);
+      } catch (error) {
+        console.error("Could not add student.", error);
+        showToast(error.message);
+      }
     });
     document.getElementById("close-modal").addEventListener("click", closeStudentModal);
     document.getElementById("cancel-modal").addEventListener("click", closeStudentModal);
@@ -1313,4 +1326,5 @@
       event.preventDefault();
       showToast(`${link.dataset.footer} information coming soon.`);
     }));
+    restoreSession();
   
