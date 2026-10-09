@@ -35,6 +35,15 @@ CREATE TABLE IF NOT EXISTS study_levels (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+INSERT INTO study_levels (name) VALUES
+    ('VC'),
+    ('បច្ចេកទេស និងវិជ្ជាជីវៈ១'),
+    ('បច្ចេកទេស និងវិជ្ជាជីវៈ២'),
+    ('បច្ចេកទេស និងវិជ្ជាជីវៈ៣'),
+    ('ជាន់ខ្ពស់បច្ចេកទេស'),
+    ('បរិញ្ញាបត្របច្ចេកទេស')
+ON CONFLICT (name) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS attendance_records (
     attendance_date DATE NOT NULL,
     student_id VARCHAR(40) NOT NULL REFERENCES students (student_id) ON DELETE CASCADE,
