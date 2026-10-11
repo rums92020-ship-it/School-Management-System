@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 
 let appScriptPromise;
 
@@ -20,11 +21,7 @@ function loadScript(src) {
 function loadDashboardScripts() {
   if (!appScriptPromise) {
     appScriptPromise = (async () => {
-      try {
-        await loadScript("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js");
-      } catch (error) {
-        console.error("Could not preload the QR code library.", error);
-      }
+      window.QRCode = QRCode;
       await loadScript("/legacy-app.js");
     })().catch((error) => {
       appScriptPromise = undefined;

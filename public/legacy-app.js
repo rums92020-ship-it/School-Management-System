@@ -298,6 +298,22 @@
       })[char]);
     }
 
+    function renderLoadingState(title, subtitle, message = "Loading school data...") {
+      content.innerHTML = pageHeader(title, subtitle) + `
+        <section class="panel">
+          <div class="empty" style="padding:32px 16px;">${escapeHTML(message)}</div>
+        </section>
+      `;
+    }
+
+    function renderDataErrorState(title, subtitle, message) {
+      content.innerHTML = pageHeader(title, subtitle, currentUser ? '<button class="btn secondary" type="button" data-action="retry-data-load">Retry</button>' : "") + `
+        <section class="panel">
+          <div class="empty" style="padding:32px 16px;">${escapeHTML(message)}</div>
+        </section>
+      `;
+    }
+
     async function apiRequest(path, options = {}) {
       const response = await fetch(path, {
         ...options,
@@ -307,7 +323,12 @@
           ...options.headers
         }
       });
-      const result = await response.json();
+      let result;
+      try {
+        result = await response.json();
+      } catch (error) {
+        result = {};
+      }
       if (!response.ok) {
         const error = new Error(result.error || `Request failed (${response.status}).`);
         error.code = result.code;
@@ -317,11 +338,34 @@
     }
 
     async function loadDatabaseData() {
-      const data = await apiRequest(`/api/data?date=${encodeURIComponent(localDateValue())}`);
-      students.splice(0, students.length, ...data.students);
-      teachers.splice(0, teachers.length, ...data.teachers);
-      studyLevels.splice(0, studyLevels.length, ...data.studyLevels);
-      attendanceTodaySummary = data.attendanceToday;
+      const activePage = currentPage || "Overview";
+      if (activePage === "Student List") {
+        renderLoadingState(t("student.directory.title"), t("student.directory.subtitle"), "Loading student records...");
+      } else if (activePage === "Teacher List") {
+        renderLoadingState(t("teacher.directory.title"), t("teacher.directory.subtitle"), "Loading teacher records...");
+      } else if (activePage === "Study Levels") {
+        renderLoadingState("Study Levels", "Create and manage the levels available in your school.", "Loading study levels...");
+      }
+
+      try {
+        const data = await apiRequest(`/api/data?date=${encodeURIComponent(localDateValue())}`);
+        students.splice(0, students.length, ...data.students);
+        teachers.splice(0, teachers.length, ...data.teachers);
+        studyLevels.splice(0, studyLevels.length, ...data.studyLevels);
+        attendanceTodaySummary = data.attendanceToday || { recorded: 0, present: 0 };
+      } catch (error) {
+        console.error("Could not load the school data from the API.", error);
+        if (activePage === "Student List") {
+          renderDataErrorState(t("student.directory.title"), t("student.directory.subtitle"), error.message);
+        } else if (activePage === "Teacher List") {
+          renderDataErrorState(t("teacher.directory.title"), t("teacher.directory.subtitle"), error.message);
+        } else if (activePage === "Study Levels") {
+          renderDataErrorState("Study Levels", "Create and manage the levels available in your school.", error.message);
+        } else if (currentUser) {
+          showToast(error.message);
+        }
+        throw error;
+      }
     }
 
     async function restoreSession() {
@@ -448,7 +492,16 @@
       return `<tr><td><div class="student-cell"><span class="student-avatar">${escapeHTML(initials)}</span><span class="student-names"><strong>${escapeHTML(englishName || student.nameKhmer || "")}</strong>${student.nameKhmer ? `<small>${escapeHTML(student.nameKhmer)}</small>` : ""}</span></div></td><td>${escapeHTML(student.id)}</td><td>${escapeHTML(student.className)}</td><td><span class="badge ${student.status === "Active" ? "active" : "pending"}">${escapeHTML(status)}</span></td></tr>`;
     }
 
-    function renderStudents(query = "") {
+    function renderStudents(query = "", options = {}) {
+      if (options.loading) {
+        renderLoadingState(t("student.directory.title"), t("student.directory.subtitle"), "Loading student records...");
+        return;
+      }
+      if (options.error) {
+        renderDataErrorState(t("student.directory.title"), t("student.directory.subtitle"), options.message || "Could not load student records.");
+        return;
+      }
+
       const normalized = query.trim().toLowerCase();
       const filtered = students.filter(student => Object.values(student).join(" ").toLowerCase().includes(normalized));
       const rows = filtered.map(student => {
@@ -465,10 +518,19 @@
       filter.setSelectionRange(filter.value.length, filter.value.length);
     }
 
-    function renderTeachers() {
-      const rows = teachers.map(teacher => `<tr><td>${escapeHTML(teacher.id)}</td><td>${escapeHTML(teacher.name)}</td><td>${escapeHTML(teacher.subject)}</td><td>${escapeHTML(teacher.className)}</td><td>${escapeHTML(teacher.phone)}</td><td><span class="badge active">${t("status.active")}</span></td></tr>`).join("");
-      content.innerHTML = pageHeader(t("teacher.directory.title"), t("teacher.directory.subtitle"), `<button class="btn" data-action="notify">${t("add.teacher")}</button>`) +
-        `<section class="panel"><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("student.name")}</th><th>Subject</th><th>${t("student.class")}</th><th>Phone</th><th>${t("status")}</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="empty">No teachers added yet.</div></td></tr>`}</tbody></table></div></section>`;
+    function renderTeachers(options = {}) {
+      if (options.loading) {
+        renderLoadingState(t("teacher.directory.title"), t("teacher.directory.subtitle"), "Loading teacher records...");
+        return;
+      }
+      if (options.error) {
+        renderDataErrorState(t("teacher.directory.title"), t("teacher.directory.subtitle"), options.message || "Could not load teacher records.");
+        return;
+      }
+
+      const rows = teachers.map(teacher => `<tr><td>${escapeHTML(teacher.id)}</td><td>${escapeHTML(teacher.nameKhmer || "—")}</td><td>${escapeHTML(teacher.nameEnglish || teacher.name || "—")}</td><td>${escapeHTML(teacher.subject)}</td><td>${escapeHTML(teacher.className)}</td><td>${escapeHTML(teacher.phone || "—")}</td><td><span class="badge active">${t("status.active")}</span></td></tr>`).join("");
+      content.innerHTML = pageHeader(t("teacher.directory.title"), t("teacher.directory.subtitle"), `<button class="btn" data-action="add-teacher">${t("add.teacher")}</button>`) +
+        `<section class="panel"><div class="table-wrap"><table class="table"><thead><tr><th>Teacher ID</th><th>Name (Khmer)</th><th>Name (English)</th><th>Subject</th><th>${t("student.class")}</th><th>Phone</th><th>${t("status")}</th></tr></thead><tbody>${rows || `<tr><td colspan="7"><div class="empty">No teachers added yet.</div></td></tr>`}</tbody></table></div></section>`;
     }
 
     function renderImportStudents() {
@@ -534,6 +596,16 @@
       while (students.some(student => student.id.toLowerCase() === id.toLowerCase()) || reservedIds.has(id.toLowerCase())) {
         sequence++;
         id = `ST-${String(sequence).padStart(4, "0")}`;
+      }
+      return id;
+    }
+
+    function createTeacherId(reservedIds = new Set()) {
+      let sequence = 2401 + teachers.length;
+      let id = `TCH-${String(sequence).padStart(4, "0")}`;
+      while (teachers.some(teacher => teacher.id.toLowerCase() === id.toLowerCase()) || reservedIds.has(id.toLowerCase())) {
+        sequence++;
+        id = `TCH-${String(sequence).padStart(4, "0")}`;
       }
       return id;
     }
@@ -760,17 +832,7 @@
 
     function getQrLibrary() {
       if (window.QRCode) return Promise.resolve(window.QRCode);
-      if (window.qrLibraryPromise) return window.qrLibraryPromise;
-      window.qrLibraryPromise = new Promise((resolve, reject) => {
-        const script = document.querySelector("script[src*='qrcode']");
-        if (!script) {
-          reject(new Error("The QR code library is not available."));
-          return;
-        }
-        script.addEventListener("load", () => resolve(window.QRCode), { once: true });
-        script.addEventListener("error", () => reject(new Error("Could not load the QR code library.")), { once: true });
-      });
-      return window.qrLibraryPromise;
+      return Promise.reject(new Error("The QR code library is not available."));
     }
 
     async function renderQrAttendance() {
@@ -812,7 +874,16 @@
       }
     }
 
-    function renderStudyLevels() {
+    function renderStudyLevels(options = {}) {
+      if (options.loading) {
+        renderLoadingState("Study Levels", "Create and manage the levels available in your school.", "Loading study levels...");
+        return;
+      }
+      if (options.error) {
+        renderDataErrorState("Study Levels", "Create and manage the levels available in your school.", options.message || "Could not load study levels.");
+        return;
+      }
+
       const rows = studyLevels.map((level, index) => `
         <tr>
           <td>${escapeHTML(String(index + 1))}</td>
@@ -986,6 +1057,14 @@
     function closeStudentModal() {
       document.getElementById("student-modal").classList.remove("open");
     }
+    function openTeacherModal() {
+      const modal = document.getElementById("teacher-modal");
+      modal.classList.add("open");
+      setTimeout(() => document.getElementById("teacher-name").focus(), 0);
+    }
+    function closeTeacherModal() {
+      document.getElementById("teacher-modal").classList.remove("open");
+    }
     function showToast(message) {
       const toast = document.getElementById("toast");
       toast.textContent = message;
@@ -1125,6 +1204,18 @@
       const action = event.target.closest("[data-action]");
       if (!action) return;
       if (action.dataset.action === "add-student") openStudentModal();
+      else if (action.dataset.action === "add-teacher") openTeacherModal();
+      else if (action.dataset.action === "retry-data-load") {
+        try {
+          await loadDatabaseData();
+          if (currentPage === "Student List") renderStudents();
+          else if (currentPage === "Teacher List") renderTeachers();
+          else if (currentPage === "Study Levels") renderStudyLevels();
+          else navigate(currentPage, currentGroup);
+        } catch (error) {
+          // Retry failed; the error state remains visible.
+        }
+      }
       else if (action.dataset.action === "remove-study-level") {
         const level = action.dataset.studyLevel;
         if (!level) return;
@@ -1313,13 +1404,65 @@
         showToast(error.message);
       }
     });
+    document.getElementById("teacher-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const teacherForm = event.currentTarget;
+      const form = new FormData(teacherForm);
+      const teacher = {
+        id: createTeacherId(new Set(teachers.map(item => item.id.toLowerCase()))),
+        nameKhmer: String(form.get("nameKhmer") || "").trim(),
+        nameEnglish: String(form.get("nameEnglish") || "").trim(),
+        subject: String(form.get("subject") || "").trim(),
+        className: String(form.get("className") || "").trim(),
+        phone: String(form.get("phone") || "").trim(),
+        status: "Active"
+      };
+      if (!teacher.nameKhmer && !teacher.nameEnglish) {
+        showToast("Enter the teacher's Khmer name, English name, or both.");
+        return;
+      }
+      const submitButton = teacherForm.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+      try {
+        const saveTeacher = () => apiRequest("/api/teachers", {
+          method: "POST",
+          body: JSON.stringify(teacher)
+        });
+        try {
+          await saveTeacher();
+        } catch (error) {
+          if (error.code !== "TEACHER_ID_CONFLICT") throw error;
+          await loadDatabaseData();
+          teacher.id = createTeacherId(new Set(teachers.map(item => item.id.toLowerCase())));
+          await saveTeacher();
+        }
+        teachers.unshift(teacher);
+        closeTeacherModal();
+        teacherForm.reset();
+        renderTeachers();
+        showToast(`${teacher.nameEnglish || teacher.nameKhmer} has been added to the PostgreSQL teacher directory.`);
+      } catch (error) {
+        console.error("Could not add teacher.", error);
+        showToast(error.message);
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
     document.getElementById("close-modal").addEventListener("click", closeStudentModal);
     document.getElementById("cancel-modal").addEventListener("click", closeStudentModal);
     document.getElementById("student-modal").addEventListener("click", event => {
       if (event.target.id === "student-modal") closeStudentModal();
     });
+    document.getElementById("close-teacher-modal").addEventListener("click", closeTeacherModal);
+    document.getElementById("cancel-teacher-modal").addEventListener("click", closeTeacherModal);
+    document.getElementById("teacher-modal").addEventListener("click", event => {
+      if (event.target.id === "teacher-modal") closeTeacherModal();
+    });
     document.addEventListener("keydown", event => {
-      if (event.key === "Escape") closeStudentModal();
+      if (event.key === "Escape") {
+        closeStudentModal();
+        closeTeacherModal();
+      }
     });
     document.getElementById("notification-button").addEventListener("click", () => showToast("You're all caught up on notifications."));
     document.querySelectorAll("[data-footer]").forEach(link => link.addEventListener("click", event => {

@@ -23,12 +23,17 @@ CREATE INDEX IF NOT EXISTS students_class_name_idx ON students (class_name);
 CREATE TABLE IF NOT EXISTS teachers (
     teacher_id VARCHAR(40) PRIMARY KEY,
     name VARCHAR(140) NOT NULL,
+    name_khmer VARCHAR(140),
+    name_english VARCHAR(140),
     subject VARCHAR(120) NOT NULL,
     class_name VARCHAR(100) NOT NULL,
     phone VARCHAR(24),
     status VARCHAR(20) NOT NULL DEFAULT 'Active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS name_khmer VARCHAR(140);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS name_english VARCHAR(140);
 
 CREATE TABLE IF NOT EXISTS study_levels (
     name VARCHAR(80) PRIMARY KEY,

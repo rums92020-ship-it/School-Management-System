@@ -24,7 +24,10 @@ export async function GET(request) {
         place_of_birth AS "placeOfBirth", personal_number AS "personalNumber",
         parent_number AS "parentNumber", parent_number AS phone, status
         FROM students ORDER BY created_at DESC, student_id`),
-      pool.query(`SELECT teacher_id AS id, name, subject, class_name AS "className", phone, status
+      pool.query(`SELECT teacher_id AS id, name_khmer AS "nameKhmer",
+        CASE WHEN name_khmer IS NULL AND name_english IS NULL THEN name ELSE name_english END AS "nameEnglish",
+        subject,
+        class_name AS "className", phone, status
         FROM teachers ORDER BY created_at DESC, teacher_id`),
       pool.query("SELECT name FROM study_levels ORDER BY name"),
       pool.query(`SELECT COUNT(*)::int AS recorded,
