@@ -4,14 +4,13 @@ import { getPool } from "../../../lib/db";
 import {
   databaseUnavailableResponse,
   jsonError,
-  leadershipRoles,
-  managementRoles,
   parsePositiveId,
+  termManagerRoles,
 } from "../../../lib/timetable";
 
 export const runtime = "nodejs";
 
-const classEditors = [...managementRoles];
+const classEditors = [...termManagerRoles];
 const activeRoles = [...roles];
 
 export async function GET() {
@@ -120,6 +119,15 @@ export async function PATCH(request) {
         (body.is_active !== undefined && typeof body.is_active !== "boolean")) {
       return jsonError("Provide a valid class ID, name, academic year, shift, and optional study level/status.", 400);
     }
+    const pool = getPool();
+    const current = await pool.query("SELECT shift_id FROM classes WHERE class_id = $1", [id]);
+    if (!current.rowCount) return jsonError("Class not found.", 404);
+    if (Number(current.rows[0].shift_id) !== body.shift_id) {
+      const hasSlots = await pool.query("SELECT 1 FROM timetable_slots WHERE class_id = $1 LIMIT 1", [id]);
+      if (hasSlots.rowCount) {
+        return jsonError("Remove or update the class timetable slots before changing its shift.", 409);
+      }
+    }
     const result = await getPool().query(
       `UPDATE classes
        SET name = $1, study_level = $2, academic_year = $3, shift_id = $4,
@@ -140,7 +148,7 @@ export async function PATCH(request) {
 
 export async function DELETE(request) {
   try {
-    const { response } = await requireRole(leadershipRoles);
+    const { response } = await requireRole(termManagerRoles);
     if (response) return response;
     const id = parsePositiveId(new URL(request.url).searchParams.get("id"));
     if (!id) return jsonError("Provide a valid class ID.", 400);

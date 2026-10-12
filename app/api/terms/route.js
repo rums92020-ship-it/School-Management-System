@@ -5,6 +5,7 @@ import {
   databaseUnavailableResponse,
   jsonError,
   parsePositiveId,
+  replaceFutureUnattendedSessionsForSlot,
   termManagerRoles,
   validDate,
 } from "../../../lib/timetable";
@@ -21,12 +22,12 @@ function normalizeTerm(body) {
   return { academicYear: academicYear.trim(), termNo, name: name.trim(), startDate, endDate };
 }
 
-async function overlaps(pool, term, excludeId = null) {
-  const result = await pool.query(
+async function overlaps(client, term, excludeId = null) {
+  const result = await client.query(
     `SELECT id FROM terms
      WHERE academic_year = $1
-       AND start_date < $3::date
-       AND end_date > $2::date
+       AND start_date <= $3::date
+       AND end_date >= $2::date
        AND ($4::bigint IS NULL OR id <> $4)
      LIMIT 1`,
     [term.academicYear, term.startDate, term.endDate, excludeId],
@@ -57,15 +58,28 @@ export async function POST(request) {
     if (response) return response;
     const term = normalizeTerm(await request.json());
     if (!term) return jsonError("Provide a name, academic year, term number, and valid start/end dates (end after start).", 400);
-    const pool = getPool();
-    if (await overlaps(pool, term)) return jsonError("The term overlaps another term in this academic year.", 409);
-    const result = await pool.query(
-      `INSERT INTO terms (academic_year, term_no, name, start_date, end_date)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, academic_year, term_no, name, start_date, end_date, is_current`,
-      [term.academicYear, term.termNo, term.name, term.startDate, term.endDate],
-    );
-    return NextResponse.json({ term: result.rows[0] }, { status: 201 });
+    const client = await getPool().connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(73499125)");
+      if (await overlaps(client, term)) {
+        await client.query("ROLLBACK");
+        return jsonError("The term overlaps another term in this academic year.", 409);
+      }
+      const result = await client.query(
+        `INSERT INTO terms (academic_year, term_no, name, start_date, end_date)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, academic_year, term_no, name, start_date, end_date, is_current`,
+        [term.academicYear, term.termNo, term.name, term.startDate, term.endDate],
+      );
+      await client.query("COMMIT");
+      return NextResponse.json({ term: result.rows[0] }, { status: 201 });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     if (error instanceof SyntaxError) return jsonError("Invalid JSON request body.", 400);
     if (error.code === "23505") return jsonError("A term with this academic year and term number already exists.", 409);
@@ -84,6 +98,7 @@ export async function PATCH(request) {
       const client = await getPool().connect();
       try {
         await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(73499125)");
         const exists = await client.query("SELECT id FROM terms WHERE id = $1 FOR UPDATE", [id]);
         if (!exists.rowCount) {
           await client.query("ROLLBACK");
@@ -102,18 +117,42 @@ export async function PATCH(request) {
     }
     const term = normalizeTerm(body);
     if (!term) return jsonError("Provide a name, academic year, term number, and valid start/end dates (end after start).", 400);
-    const pool = getPool();
-    const exists = await pool.query("SELECT id FROM terms WHERE id = $1", [id]);
-    if (!exists.rowCount) return jsonError("Term not found.", 404);
-    if (await overlaps(pool, term, id)) return jsonError("The term overlaps another term in this academic year.", 409);
-    const result = await pool.query(
-      `UPDATE terms
-       SET academic_year = $1, term_no = $2, name = $3, start_date = $4, end_date = $5
-       WHERE id = $6
-       RETURNING id, academic_year, term_no, name, start_date, end_date, is_current`,
-      [term.academicYear, term.termNo, term.name, term.startDate, term.endDate, id],
-    );
-    return NextResponse.json({ term: result.rows[0] });
+    const client = await getPool().connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(73499125)");
+      const exists = await client.query("SELECT id FROM terms WHERE id = $1 FOR UPDATE", [id]);
+      if (!exists.rowCount) {
+        await client.query("ROLLBACK");
+        return jsonError("Term not found.", 404);
+      }
+      if (await overlaps(client, term, id)) {
+        await client.query("ROLLBACK");
+        return jsonError("The term overlaps another term in this academic year.", 409);
+      }
+      const result = await client.query(
+        `UPDATE terms
+         SET academic_year = $1, term_no = $2, name = $3, start_date = $4, end_date = $5
+         WHERE id = $6
+         RETURNING id, academic_year, term_no, name, start_date, end_date, is_current`,
+        [term.academicYear, term.termNo, term.name, term.startDate, term.endDate, id],
+      );
+      const slots = await client.query("SELECT slot_id FROM timetable_slots WHERE term_id = $1", [id]);
+      for (const slot of slots.rows) {
+        await client.query(
+          "UPDATE timetable_slots SET valid_from = $1, valid_to = $2 WHERE slot_id = $3",
+          [term.startDate, term.endDate, slot.slot_id],
+        );
+        await replaceFutureUnattendedSessionsForSlot(client, slot.slot_id);
+      }
+      await client.query("COMMIT");
+      return NextResponse.json({ term: result.rows[0] });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     if (error instanceof SyntaxError) return jsonError("Invalid JSON request body.", 400);
     if (error.code === "23505") return jsonError("A term with this academic year and term number already exists.", 409);
