@@ -31,11 +31,11 @@ export async function GET(request) {
     if (shiftIdValue && !shiftId) return jsonError("Provide a valid shift ID.", 400);
     const result = await getPool().query(
       `SELECT shift_periods.id, shift_periods.shift_id, shifts.code AS shift_code,
-        shift_days.weekday, period_no, start_time, end_time
+        shift_days.weekday, shift_periods.period_no, shift_periods.start_time, shift_periods.end_time
        FROM shift_periods JOIN shifts ON shifts.id = shift_periods.shift_id
        CROSS JOIN LATERAL unnest(shifts.days_of_week) AS shift_days(weekday)
-       WHERE ($1::uuid IS NULL OR shift_id = $1)
-       ORDER BY shift_id, shift_days.weekday, period_no`,
+       WHERE ($1::uuid IS NULL OR shift_periods.shift_id = $1)
+       ORDER BY shift_periods.shift_id, shift_days.weekday, shift_periods.period_no`,
       [shiftId],
     );
     return NextResponse.json({ periods: result.rows });

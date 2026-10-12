@@ -13,7 +13,7 @@ import {
 
 export const runtime = "nodejs";
 
-const scannerRoles = [...managementRoles, "dept_head", "dept_deputy", "teacher"];
+const scannerRoles = [...managementRoles, "office_staff", "dept_head", "dept_deputy", "teacher"];
 
 function readStudentId(body) {
   if (typeof body.student_id === "string") return body.student_id.trim();

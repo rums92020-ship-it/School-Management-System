@@ -12,7 +12,7 @@ import {
 
 export const runtime = "nodejs";
 
-const closerRoles = [...managementRoles, "dept_head", "dept_deputy", "teacher"];
+const closerRoles = [...managementRoles, "office_staff", "dept_head", "dept_deputy", "teacher"];
 
 export async function POST(request) {
   try {
