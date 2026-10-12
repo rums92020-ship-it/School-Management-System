@@ -4,8 +4,8 @@
       { name: "Students", icon: "♙", items: ["Student List", "Add Students", "Student Enrollment", "Import from Excel", "Student Documents"] },
       { name: "Teachers", icon: "♧", items: ["Teacher List", "Assign Subject", "Teacher Schedule"] },
       { name: "Classes", icon: "▤", items: ["Classes", "Study Levels", "Sections", "Student Assignment"] },
-      { name: "Academics", icon: "▱", items: ["Subject List", "Class Timetable", "Exam Schedule", "Student Results"] },
-      { name: "Attendance", icon: "◷", items: ["Take Attendance", "QR Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports"] },
+      { name: "Academics", icon: "▱", items: ["Subject List", "Class Timetable", "My Timetable", "Terms & Shifts", "Exam Schedule", "Student Results"] },
+      { name: "Attendance", icon: "◷", items: ["Session Attendance", "My Attendance", "Take Attendance", "QR Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports"] },
       { name: "Finance", icon: "$", items: ["School Fees", "Student Payments", "Invoices", "Expenses", "Financial Reports"] },
       { name: "Community", icon: "♧", items: ["Parent List", "Announcements", "Messages", "School Events"] },
       { name: "Library", icon: "▣", items: ["Books", "Borrow Books", "Return Books", "Library Reports"] },
@@ -24,6 +24,18 @@
       teacher: ["Overview", "Student List", "Take Attendance", "Daily Attendance", "Student Results", "My Account"],
       student: ["Overview", "Student List", "Monthly Attendance", "Student Results", "My Account"],
       guardian: ["Overview", "Student List", "Monthly Attendance", "Student Results", "My Account"]
+    };
+    const additionalRolePages = {
+      director: ["My Timetable", "Terms & Shifts", "Session Attendance", "My Attendance"],
+      deputy_director: ["My Timetable", "Terms & Shifts", "Session Attendance", "My Attendance"],
+      office_head: ["Classes", "Class Timetable", "Terms & Shifts", "Attendance Reports", "Session Attendance"],
+      office_deputy: ["Classes", "Class Timetable", "Terms & Shifts", "Attendance Reports", "Session Attendance"],
+      office_staff: ["Classes", "Class Timetable", "Terms & Shifts", "Attendance Reports", "Session Attendance"],
+      dept_head: ["My Timetable", "Terms & Shifts", "Session Attendance", "My Attendance"],
+      dept_deputy: ["My Timetable", "Terms & Shifts", "Session Attendance", "My Attendance"],
+      teacher: ["My Timetable", "Terms & Shifts", "Session Attendance", "My Attendance"],
+      student: ["My Timetable", "Terms & Shifts", "My Attendance"],
+      guardian: ["My Timetable", "Terms & Shifts", "My Attendance"]
     };
     const roleNames = {
       director: { en: "Director", km: "នាយកវិទ្យាស្ថាន" },
@@ -64,6 +76,9 @@
     let toastTimer;
     let currentLanguage = "en";
     let currentUser = null;
+    let activeTimetableContext = null;
+    let selectedAttendanceSessionId = "";
+    let qrMediaStream = null;
 
     const uiText = {
       "dashboard.greeting": { en: "Welcome back", km: "សូមស្វាគមន៍ការត្រឡប់មកវិញ" },
@@ -206,7 +221,8 @@
     }
 
     function hasPagePermission(page) {
-      return Boolean(currentUser && rolePages[currentUser.role]?.includes(page));
+      return Boolean(currentUser &&
+        (rolePages[currentUser.role]?.includes(page) || additionalRolePages[currentUser.role]?.includes(page)));
     }
 
     function canCreateStudents() {
@@ -336,7 +352,13 @@
       else if (currentPage === "QR Attendance") renderQrAttendance();
       else if (currentPage === "Student List") renderStudents();
       else if (currentPage === "Teacher List") renderTeachers();
-      else if (currentPage === "Take Attendance") renderAttendance();
+      else if (currentPage === "Take Attendance") renderSessionAttendance();
+      else if (["Classes", "Class Timetable"].includes(currentPage)) renderClassesManager();
+      else if (currentPage === "Terms & Shifts") renderTermsAndShifts();
+      else if (currentPage === "My Timetable") renderMyTimetable();
+      else if (currentPage === "Session Attendance") renderSessionAttendance();
+      else if (currentPage === "My Attendance") renderMyAttendance();
+      else if (currentPage === "Attendance Reports") renderAttendanceReports();
       else if (currentPage === "Import from Excel") renderImportStudents();
       else if (currentPage === "Bot Settings") renderTelegram("Bot Settings");
       else if (currentPage === "Notification Rules") renderTelegram("Notification Rules");
@@ -864,7 +886,7 @@
 
     function renderAttendance(selectedClass = "All levels") {
       const date = localDateValue();
-      const canEditAttendance = ["director", "deputy_director", "dept_head", "dept_deputy", "teacher"].includes(currentUser?.role);
+      const canEditAttendance = false;
       const rows = students.map(student => {
         const selected = attendanceRecords.get(`${date}|${student.id}`) || "Present";
         const choices = ["Present", "Absent", "Late"].map(value =>
@@ -1188,6 +1210,665 @@
       content.innerHTML = pageHeader(page, descriptions[page] || descriptions["Bot Settings"]) + body;
     }
 
+    const timetableManagerRoles = ["director", "deputy_director", "office_head", "office_deputy", "office_staff"];
+    const timetableLeadershipRoles = ["director", "deputy_director"];
+    const weekdayNames = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+    function isTimetableManager() {
+      return timetableManagerRoles.includes(currentUser?.role);
+    }
+
+    function isTimetableLeader() {
+      return timetableLeadershipRoles.includes(currentUser?.role);
+    }
+
+    function escapeAttribute(value) {
+      return escapeHTML(value ?? "");
+    }
+
+    function dateLabel(value) {
+      if (!value) return "";
+      const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+      return Number.isNaN(date.valueOf()) ? String(value) : date.toLocaleDateString(currentLanguage === "km" ? "km" : "en");
+    }
+
+    function termOptions(terms, selectedId = "") {
+      return terms.map(term => `<option value="${term.id}" ${String(term.id) === String(selectedId) ? "selected" : ""}>${escapeHTML(term.name)} · ${escapeHTML(term.academic_year)}${term.is_current ? " · Current" : ""}</option>`).join("");
+    }
+
+    function classOptions(classes, selectedId = "") {
+      return classes.map(item => `<option value="${item.class_id}" ${String(item.class_id) === String(selectedId) ? "selected" : ""}>${escapeHTML(item.name)} · ${escapeHTML(item.academic_year)}</option>`).join("");
+    }
+
+    function renderAsyncError(title, subtitle, error) {
+      content.innerHTML = pageHeader(title, subtitle) +
+        `<section class="panel"><div class="empty">${escapeHTML(error.message)}<br><button class="btn secondary" type="button" data-action="retry-current-page">Retry</button></div></section>`;
+    }
+
+    async function renderClassesManager() {
+      const title = currentPage === "Class Timetable" ? "Class timetable" : "Classes";
+      const subtitle = currentPage === "Class Timetable"
+        ? "Review weekly class periods and generate sessions for a term."
+        : "Manage classes, assigned teachers, and student enrollment.";
+      renderLoadingState(title, subtitle, "Loading classes and timetable data...");
+      try {
+        const [classData, termData, shiftData, subjectData] = await Promise.all([
+          apiRequest("/api/classes"),
+          apiRequest("/api/terms"),
+          apiRequest("/api/shifts"),
+          apiRequest("/api/subjects")
+        ]);
+        if (currentPage === "Class Timetable") {
+          await renderClassTimetable({ classes: classData.classes, terms: termData.terms, shifts: shiftData.shifts, subjects: subjectData.subjects });
+          return;
+        }
+        const canManage = isTimetableManager();
+        const firstClass = classData.classes[0];
+        content.innerHTML = pageHeader(title, subtitle) +
+          (canManage ? `<section class="panel timetable-panel"><div class="panel-head"><div><h2>Create a class</h2><p>A shift is required for the class timetable.</p></div></div>
+          <form id="class-create-form" class="timetable-form"><div class="field"><label for="new-class-name">Class name</label><input id="new-class-name" name="name" maxlength="100" required></div>
+          <div class="field"><label for="new-class-year">Academic year</label><input id="new-class-year" name="academic_year" maxlength="30" required></div>
+          <div class="field"><label for="new-class-level">Study level</label><input id="new-class-level" name="study_level" maxlength="80"></div>
+          <div class="field"><label for="new-class-shift">Shift</label><select id="new-class-shift" name="shift_id" required><option value="">Select shift</option>${shiftData.shifts.map(shift => `<option value="${shift.id}">${escapeHTML(shift.name)} (${escapeHTML(shift.code)})</option>`).join("")}</select></div>
+          <button class="btn" type="submit">Create class</button></form></section>` : "") +
+          `<section class="panel timetable-panel"><div class="panel-head"><div><h2>Class list</h2><p>${classData.classes.length} classes available to your account.</p></div>${hasPagePermission("Class Timetable") ? `<button class="btn secondary" type="button" data-page="Class Timetable">Open timetable</button>` : ""}</div>
+          ${classData.classes.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Class</th><th>Study level</th><th>Academic year</th><th>Shift</th>${canManage ? "<th>Actions</th>" : ""}</tr></thead><tbody>${classData.classes.map(item => `<tr><td>${escapeHTML(item.name)}</td><td>${escapeHTML(item.study_level || "—")}</td><td>${escapeHTML(item.academic_year)}</td><td>${escapeHTML(item.shift_code || "—")}</td>${canManage ? `<td><button class="btn secondary small-btn" data-action="edit-class" data-class-id="${item.class_id}">Edit</button> <button class="btn secondary small-btn" data-action="manage-class" data-class-id="${item.class_id}">Teachers & students</button>${isTimetableLeader() ? ` <button class="text-link danger-link" data-action="delete-class" data-class-id="${item.class_id}">Delete</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="empty">No classes are available for your account.</div>`}</section>
+          ${canManage && classData.classes.length ? `<section class="panel timetable-panel" id="class-assignment-panel"><div class="panel-head"><div><h2>Class membership</h2><p>Assign teachers and enroll or remove students.</p></div></div>
+            <div class="attendance-controls"><div class="field"><label for="membership-class">Class</label><select id="membership-class">${classOptions(classData.classes, firstClass?.class_id)}</select></div></div><div id="membership-details" class="empty">Choose a class to load its roster.</div></section>` : ""}`;
+        const classForm = document.getElementById("class-create-form");
+        if (classForm) classForm.addEventListener("submit", createClass);
+        const membershipClass = document.getElementById("membership-class");
+        if (membershipClass) {
+          membershipClass.addEventListener("change", () => loadClassMembership(membershipClass.value));
+          await loadClassMembership(membershipClass.value);
+        }
+      } catch (error) {
+        console.error("Could not load classes for the timetable screens.", error);
+        renderAsyncError(title, subtitle, error);
+      }
+    }
+
+    async function createClass(event) {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      try {
+        await apiRequest("/api/classes", {
+          method: "POST",
+          body: JSON.stringify({
+            name: String(form.get("name") || "").trim(),
+            academic_year: String(form.get("academic_year") || "").trim(),
+            study_level: String(form.get("study_level") || "").trim() || null,
+            shift_id: Number(form.get("shift_id"))
+          })
+        });
+        showToast("Class created.");
+        await renderClassesManager();
+      } catch (error) {
+        showToast(error.message);
+      }
+    }
+
+    async function loadClassMembership(classId) {
+      const panel = document.getElementById("membership-details");
+      if (!panel || !classId) return;
+      panel.innerHTML = `<div class="empty">Loading class membership...</div>`;
+      try {
+        const [teacherData, studentData] = await Promise.all([
+          apiRequest(`/api/classes/teachers?class_id=${encodeURIComponent(classId)}`),
+          apiRequest(`/api/classes/students?class_id=${encodeURIComponent(classId)}`)
+        ]);
+        const assignedTeachers = new Set(teacherData.teachers.map(teacher => teacher.teacher_id));
+        const enrolledStudents = new Set(studentData.students.map(student => student.student_id));
+        panel.innerHTML = `<div class="membership-grid">
+          <section><h3>Assigned teachers</h3><form id="class-teacher-form" class="inline-form"><select name="teacher_id" required><option value="">Select teacher</option>${teachers.filter(teacher => !assignedTeachers.has(teacher.id)).map(teacher => `<option value="${escapeAttribute(teacher.id)}">${escapeHTML(teacher.nameEnglish || teacher.name || teacher.nameKhmer)} · ${escapeHTML(teacher.id)}</option>`).join("")}</select><button class="btn" type="submit">Assign</button></form>
+          ${teacherData.teachers.length ? `<ul class="membership-list">${teacherData.teachers.map(teacher => `<li>${escapeHTML(teacher.name_english || teacher.name || teacher.name_khmer || teacher.teacher_id)}<button type="button" class="text-link" data-action="remove-class-teacher" data-class-id="${classId}" data-teacher-id="${escapeAttribute(teacher.teacher_id)}">Remove</button></li>`).join("")}</ul>` : `<div class="empty">No teachers assigned.</div>`}</section>
+          <section><h3>Enrolled students</h3><form id="class-student-form" class="inline-form"><select name="student_id" required><option value="">Select student</option>${students.filter(student => !enrolledStudents.has(student.id)).map(student => `<option value="${escapeAttribute(student.id)}">${escapeHTML(student.nameEnglish || student.name || student.nameKhmer)} · ${escapeHTML(student.id)}</option>`).join("")}</select><button class="btn" type="submit">Enroll</button></form>
+          ${studentData.students.length ? `<ul class="membership-list">${studentData.students.map(student => `<li>${escapeHTML(student.name_english || student.name || student.name_khmer || student.student_id)}<button type="button" class="text-link" data-action="remove-class-student" data-class-id="${classId}" data-student-id="${escapeAttribute(student.student_id)}">Remove</button></li>`).join("")}</ul>` : `<div class="empty">No students enrolled.</div>`}</section></div>`;
+        document.getElementById("class-teacher-form").addEventListener("submit", event => assignClassPerson(event, "teacher", classId));
+        document.getElementById("class-student-form").addEventListener("submit", event => assignClassPerson(event, "student", classId));
+      } catch (error) {
+        console.error("Could not load class membership.", error);
+        panel.innerHTML = `<div class="empty error-state">${escapeHTML(error.message)}</div>`;
+      }
+    }
+
+    async function assignClassPerson(event, kind, classId) {
+      event.preventDefault();
+      const field = kind === "teacher" ? "teacher_id" : "student_id";
+      try {
+        await apiRequest(`/api/classes/${kind === "teacher" ? "teachers" : "students"}`, {
+          method: "POST",
+          body: JSON.stringify({ class_id: Number(classId), [field]: String(new FormData(event.currentTarget).get(field) || "") })
+        });
+        await loadClassMembership(classId);
+        showToast(kind === "teacher" ? "Teacher assigned." : "Student enrolled.");
+      } catch (error) {
+        showToast(error.message);
+      }
+    }
+
+    async function renderTermsAndShifts() {
+      const title = "Terms & shifts";
+      const subtitle = "Manage academic terms and review the fixed 90-minute shift periods.";
+      renderLoadingState(title, subtitle, "Loading terms and shifts...");
+      try {
+        const [termData, shiftData] = await Promise.all([apiRequest("/api/terms"), apiRequest("/api/shifts")]);
+        const canManage = isTimetableManager();
+        const canEditShifts = isTimetableLeader();
+        content.innerHTML = pageHeader(title, subtitle) +
+          (canManage ? `<section class="panel timetable-panel"><div class="panel-head"><div><h2>Create academic term</h2><p>Terms in the same academic year cannot overlap.</p></div></div>
+          <form id="term-create-form" class="timetable-form"><div class="field"><label>Academic year</label><input name="academic_year" maxlength="30" required></div><div class="field"><label>Term number</label><input name="term_no" type="number" min="1" max="20" required></div><div class="field"><label>Term name</label><input name="name" maxlength="100" required></div><div class="field"><label>Start date</label><input name="start_date" type="date" required></div><div class="field"><label>End date</label><input name="end_date" type="date" required></div><button class="btn" type="submit">Create term</button></form></section>` : "") +
+          `<section class="panel timetable-panel"><div class="panel-head"><div><h2>Academic terms</h2><p>Set one term as current for schedules.</p></div></div>
+          ${termData.terms.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Term</th><th>Academic year</th><th>Dates</th><th>Status</th>${canManage ? "<th>Actions</th>" : ""}</tr></thead><tbody>${termData.terms.map(term => `<tr><td>${escapeHTML(term.name)} · ${term.term_no}</td><td>${escapeHTML(term.academic_year)}</td><td>${dateLabel(term.start_date)} — ${dateLabel(term.end_date)}</td><td>${term.is_current ? "Current" : "—"}</td>${canManage ? `<td>${term.is_current ? "" : `<button type="button" class="btn secondary small-btn" data-action="set-current-term" data-term-id="${term.id}">Set current</button>`} <button type="button" class="btn secondary small-btn" data-action="edit-term" data-term-id="${term.id}">Edit</button><button type="button" class="text-link danger-link" data-action="delete-term" data-term-id="${term.id}">Delete</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="empty">No terms have been created.</div>`}</section>
+          <section class="panel timetable-panel"><div class="panel-head"><div><h2>Shifts and periods</h2><p>Each displayed period is exactly 90 minutes.</p></div></div>
+          ${shiftData.shifts.map(shift => `<article class="shift-block"><h3>${escapeHTML(shift.name)} <small>${escapeHTML(shift.code)}</small></h3><div class="table-wrap"><table class="table"><thead><tr><th>Weekday</th><th>Period</th><th>Start</th><th>End</th>${canEditShifts ? "<th></th>" : ""}</tr></thead><tbody>${shift.periods.map(period => `<tr><td>${escapeHTML(weekdayNames[period.weekday])}</td><td>${period.period_no}</td><td>${escapeHTML(String(period.start_time).slice(0, 5))}</td><td>${escapeHTML(String(period.end_time).slice(0, 5))}</td>${canEditShifts ? `<td><button class="text-link" data-action="delete-shift-period" data-period-id="${period.id}">Remove</button></td>` : ""}</tr>`).join("")}</tbody></table></div></article>`).join("")}
+          ${canEditShifts ? `<form id="shift-period-form" class="timetable-form compact-form"><div class="field"><label>Shift</label><select name="shift_id" required>${shiftData.shifts.map(shift => `<option value="${shift.id}">${escapeHTML(shift.name)}</option>`).join("")}</select></div><div class="field"><label>Weekday</label><select name="weekday">${weekdayNames.slice(1).map((day, index) => `<option value="${index + 1}">${day}</option>`).join("")}</select></div><div class="field"><label>Period number</label><input name="period_no" type="number" min="1" max="5" required></div><div class="field"><label>Start time</label><input name="start_time" type="time" required></div><div class="field"><label>End time</label><input name="end_time" type="time" required></div><button class="btn" type="submit">Add period</button></form>` : ""}</section>`;
+        const termForm = document.getElementById("term-create-form");
+        if (termForm) termForm.addEventListener("submit", createTerm);
+        const periodForm = document.getElementById("shift-period-form");
+        if (periodForm) periodForm.addEventListener("submit", createShiftPeriod);
+      } catch (error) {
+        console.error("Could not load terms and shifts.", error);
+        renderAsyncError(title, subtitle, error);
+      }
+    }
+
+    async function createTerm(event) {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const payload = Object.fromEntries(["academic_year", "name", "start_date", "end_date"].map(key => [key, String(form.get(key) || "").trim()]));
+      payload.term_no = Number(form.get("term_no"));
+      try {
+        await apiRequest("/api/terms", { method: "POST", body: JSON.stringify(payload) });
+        showToast("Academic term created.");
+        await renderTermsAndShifts();
+      } catch (error) { showToast(error.message); }
+    }
+
+    async function createShiftPeriod(event) {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const payload = Object.fromEntries(["shift_id", "weekday", "period_no"].map(key => [key, Number(form.get(key))]));
+      payload.start_time = form.get("start_time");
+      payload.end_time = form.get("end_time");
+      try {
+        await apiRequest("/api/shifts/periods", { method: "POST", body: JSON.stringify(payload) });
+        showToast("Shift period added.");
+        await renderTermsAndShifts();
+      } catch (error) { showToast(error.message); }
+    }
+
+    async function renderClassTimetable(data = null) {
+      const title = "Class timetable";
+      const subtitle = "Build the weekly timetable from the selected class shift and academic term.";
+      if (!data) {
+        await renderClassesManager();
+        return;
+      }
+      const term = data.terms.find(item => item.is_current) || data.terms[0];
+      const classRow = data.classes[0];
+      content.innerHTML = pageHeader(title, subtitle) +
+        `<section class="panel timetable-panel"><div class="attendance-controls"><div class="field"><label for="timetable-term">Term</label><select id="timetable-term">${termOptions(data.terms, term?.id)}</select></div><div class="field"><label for="timetable-class">Class</label><select id="timetable-class">${classOptions(data.classes, classRow?.class_id)}</select></div></div><div id="timetable-editor" class="empty">${data.classes.length && data.terms.length ? "Loading weekly timetable..." : "Create a class and an academic term before editing the timetable."}</div></section>`;
+      const termSelect = document.getElementById("timetable-term");
+      const classSelect = document.getElementById("timetable-class");
+      const reload = () => loadTimetableEditor(classSelect.value, termSelect.value, data);
+      termSelect.addEventListener("change", reload);
+      classSelect.addEventListener("change", reload);
+      if (classRow && term) await reload();
+    }
+
+    async function loadTimetableEditor(classId, termId, data) {
+      const editor = document.getElementById("timetable-editor");
+      if (!editor || !classId || !termId) return;
+      editor.innerHTML = `<div class="empty">Loading shift periods and weekly slots...</div>`;
+      try {
+        const selectedClass = data.classes.find(item => String(item.class_id) === String(classId));
+        const [periodData, slotData, teacherData] = await Promise.all([
+          apiRequest(`/api/shifts/periods?shift_id=${encodeURIComponent(selectedClass.shift_id)}`),
+          apiRequest(`/api/timetable?term_id=${encodeURIComponent(termId)}&class_id=${encodeURIComponent(classId)}`),
+          apiRequest(`/api/classes/teachers?class_id=${encodeURIComponent(classId)}`)
+        ]);
+        const periods = periodData.periods;
+        const slots = slotData.slots;
+        activeTimetableContext = { classId: Number(classId), termId: Number(termId), data, periods, slots };
+        const weekdays = [...new Set(periods.map(period => Number(period.weekday)))].sort((a, b) => a - b);
+        const periodNumbers = [...new Set(periods.map(period => Number(period.period_no)))].sort((a, b) => a - b);
+        const cell = (weekday, periodNo) => {
+          const slot = slots.find(item => Number(item.weekday) === weekday && Number(item.period_no) === periodNo);
+          return slot ? `<div class="timetable-slot"><strong>${escapeHTML(slot.subject_name)}</strong><small>${escapeHTML(slot.teacher_name || slot.teacher_id)}</small><small>${escapeHTML(String(slot.start_time).slice(0, 5))}–${escapeHTML(String(slot.end_time).slice(0, 5))}${slot.room ? ` · ${escapeHTML(slot.room)}` : ""}</small>${isTimetableManager() ? `<button class="text-link" data-action="edit-timetable-slot" data-slot-id="${slot.slot_id}">Edit</button>${isTimetableLeader() ? ` <button class="text-link danger-link" data-action="delete-timetable-slot" data-slot-id="${slot.slot_id}">Remove</button>` : ""}</div>` : `<span class="muted">—</span>`;
+        };
+        const periodsByNo = new Map(periods.map(period => [Number(period.period_no), period]));
+        const grid = `<div class="table-wrap timetable-grid-wrap"><table class="table timetable-grid"><thead><tr><th>Period</th>${weekdays.map(day => `<th>${weekdayNames[day]}</th>`).join("")}</tr></thead><tbody>${periodNumbers.map(number => {
+          const period = periodsByNo.get(number);
+          return `<tr><th>${number}<small>${escapeHTML(String(period.start_time).slice(0, 5))}–${escapeHTML(String(period.end_time).slice(0, 5))}</small></th>${weekdays.map(day => {
+            const valid = periods.some(item => Number(item.weekday) === day && Number(item.period_no) === number);
+            return `<td>${valid ? cell(day, number) : `<span class="muted">—</span>`}</td>`;
+          }).join("")}</tr>`;
+        }).join("")}</tbody></table></div>`;
+        const subjects = data.subjects.filter(subject => subject.is_active);
+        const teacherOptions = teacherData.teachers.map(teacher => `<option value="${escapeAttribute(teacher.teacher_id)}">${escapeHTML(teacher.name_english || teacher.name || teacher.name_khmer || teacher.teacher_id)}</option>`).join("");
+        const canEdit = isTimetableManager();
+        editor.innerHTML = `<div class="notice">${escapeHTML(selectedClass.name)} · ${escapeHTML(data.shifts.find(shift => Number(shift.id) === Number(selectedClass.shift_id))?.name || selectedClass.shift_code || "")} · ${periods.length} configured weekday periods.</div>${grid}
+          ${canEdit ? `<div class="timetable-toolbar"><button class="btn secondary" data-action="preview-session-generation" data-term-id="${termId}" data-class-id="${classId}">Preview & generate sessions</button></div>
+          <form id="timetable-slot-form" class="timetable-form"><input type="hidden" name="slot_id"><input type="hidden" name="term_id" value="${termId}"><input type="hidden" name="class_id" value="${classId}">
+            <div class="field"><label>Weekday / period</label><select name="period_key" required><option value="">Select shift period</option>${periods.map(period => `<option value="${period.weekday}:${period.period_no}" data-weekday="${period.weekday}" data-number="${period.period_no}" data-start="${escapeAttribute(String(period.start_time).slice(0, 5))}" data-end="${escapeAttribute(String(period.end_time).slice(0, 5))}">${escapeHTML(weekdayNames[period.weekday])} · Period ${period.period_no} (${escapeHTML(String(period.start_time).slice(0, 5))}–${escapeHTML(String(period.end_time).slice(0, 5))})</option>`).join("")}</select></div>
+            <div class="field"><label>Subject</label><select name="subject_id" required><option value="">Select subject</option>${subjects.map(subject => `<option value="${subject.subject_id}">${escapeHTML(subject.name)}</option>`).join("")}</select></div>
+            <div class="field"><label>Assigned teacher</label><select name="teacher_id" required><option value="">Select class teacher</option>${teacherOptions}</select></div>
+            <div class="field"><label>Room (optional)</label><input name="room" maxlength="100"></div><button class="btn" type="submit">Save timetable slot</button><button class="btn secondary" type="reset">Clear form</button></form>` : ""}
+          ${canEdit && !teacherData.teachers.length ? `<div class="notice">Assign at least one teacher to this class before adding timetable slots.</div>` : ""}`;
+        const slotForm = document.getElementById("timetable-slot-form");
+        if (slotForm) slotForm.addEventListener("submit", saveTimetableSlot);
+        const generateButton = editor.querySelector('[data-action="preview-session-generation"]');
+        if (generateButton) generateButton.addEventListener("click", previewSessionGeneration);
+      } catch (error) {
+        console.error("Could not load class timetable.", error);
+        editor.innerHTML = `<div class="empty error-state">${escapeHTML(error.message)}</div>`;
+      }
+    }
+
+    async function saveTimetableSlot(event) {
+      event.preventDefault();
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
+      const periodOption = formElement.querySelector('[name="period_key"] option:checked');
+      const [weekday, periodNo] = String(form.get("period_key") || "").split(":").map(Number);
+      if (!periodOption?.dataset.start || !weekday || !periodNo) {
+        showToast("Select a valid period from the class shift.");
+        return;
+      }
+      const payload = {
+        term_id: Number(form.get("term_id")),
+        class_id: Number(form.get("class_id")),
+        weekday,
+        period_no: periodNo,
+        start_time: periodOption.dataset.start,
+        end_time: periodOption.dataset.end,
+        subject_id: Number(form.get("subject_id")),
+        teacher_id: String(form.get("teacher_id") || ""),
+        room: String(form.get("room") || "").trim() || null
+      };
+      const slotId = String(form.get("slot_id") || "");
+      if (slotId) payload.slot_id = Number(slotId);
+      try {
+        await apiRequest("/api/timetable", {
+          method: slotId ? "PATCH" : "POST",
+          body: JSON.stringify(payload)
+        });
+        showToast(slotId ? "Timetable slot updated." : "Timetable slot created.");
+        await renderClassesManager();
+      } catch (error) {
+        showToast(error.message);
+      }
+    }
+
+    async function editClass(classId) {
+      try {
+        const { classes } = await apiRequest("/api/classes");
+        const item = classes.find(entry => String(entry.class_id) === String(classId));
+        if (!item) throw new Error("Class not found.");
+        const name = window.prompt("Class name", item.name);
+        if (name === null) return;
+        const academicYear = window.prompt("Academic year", item.academic_year);
+        if (academicYear === null) return;
+        const studyLevel = window.prompt("Study level", item.study_level || "");
+        if (studyLevel === null) return;
+        const shift = window.prompt("Shift ID (view Terms & shifts for IDs)", item.shift_id);
+        if (shift === null) return;
+        await apiRequest("/api/classes", {
+          method: "PATCH",
+          body: JSON.stringify({
+            class_id: Number(item.class_id), name: name.trim(),
+            academic_year: academicYear.trim(), study_level: studyLevel.trim() || null,
+            shift_id: Number(shift), is_active: item.is_active
+          })
+        });
+        showToast("Class updated.");
+        await renderClassesManager();
+      } catch (error) {
+        showToast(error.message);
+      }
+    }
+
+    async function editTerm(termId) {
+      try {
+        const { terms } = await apiRequest("/api/terms");
+        const term = terms.find(item => String(item.id) === String(termId));
+        if (!term) throw new Error("Term not found.");
+        const name = window.prompt("Term name", term.name);
+        if (name === null) return;
+        const academicYear = window.prompt("Academic year", term.academic_year);
+        if (academicYear === null) return;
+        const termNo = window.prompt("Term number", term.term_no);
+        if (termNo === null) return;
+        const startDate = window.prompt("Start date (YYYY-MM-DD)", String(term.start_date).slice(0, 10));
+        if (startDate === null) return;
+        const endDate = window.prompt("End date (YYYY-MM-DD)", String(term.end_date).slice(0, 10));
+        if (endDate === null) return;
+        await apiRequest("/api/terms", {
+          method: "PATCH",
+          body: JSON.stringify({
+            id: Number(term.id), name: name.trim(), academic_year: academicYear.trim(),
+            term_no: Number(termNo), start_date: startDate, end_date: endDate
+          })
+        });
+        showToast("Term updated. Future unattended sessions were refreshed.");
+        await renderTermsAndShifts();
+      } catch (error) {
+        showToast(error.message);
+      }
+    }
+
+    async function renderMyTimetable() {
+      const title = "My timetable";
+      const subtitle = "View your authorized weekly timetable and today's generated sessions.";
+      renderLoadingState(title, subtitle, "Loading your timetable...");
+      try {
+        const termsData = await apiRequest("/api/terms");
+        const terms = termsData.terms;
+        const term = terms.find(item => item.is_current) || terms[0];
+        if (!term) {
+          content.innerHTML = pageHeader(title, subtitle) + `<section class="panel"><div class="empty">No academic term is configured.</div></section>`;
+          return;
+        }
+        const [slotData, todayData] = await Promise.all([
+          apiRequest(`/api/timetable?term_id=${encodeURIComponent(term.id)}`),
+          apiRequest(`/api/sessions?term_id=${encodeURIComponent(term.id)}&date=${encodeURIComponent(localDateValue())}`)
+        ]);
+        const slots = slotData.slots;
+        const dayNumbers = [...new Set(slots.map(slot => Number(slot.weekday)))].sort((a, b) => a - b);
+        const slotTimes = [...new Set(slots.map(slot => `${slot.start_time}|${slot.end_time}`))].sort();
+        const weekGrid = slots.length ? `<div class="table-wrap timetable-grid-wrap"><table class="table timetable-grid"><thead><tr><th>Time</th>${dayNumbers.map(day => `<th>${weekdayNames[day]}</th>`).join("")}</tr></thead><tbody>${slotTimes.map(times => {
+          const [start, end] = times.split("|");
+          return `<tr><th>${escapeHTML(start.slice(0, 5))}<small>${escapeHTML(end.slice(0, 5))}</small></th>${dayNumbers.map(day => {
+            const slot = slots.find(item => Number(item.weekday) === day && item.start_time === start && item.end_time === end);
+            return `<td>${slot ? `<strong>${escapeHTML(slot.subject_name)}</strong><small>${escapeHTML(slot.class_name)} · ${escapeHTML(slot.teacher_name || "")}</small>${slot.room ? `<small>${escapeHTML(slot.room)}</small>` : ""}` : `<span class="muted">—</span>`}</td>`;
+          }).join("")}</tr>`;
+        }).join("")}</tbody></table></div>` : `<div class="empty">No timetable slots are configured for this term.</div>`;
+        const todaySessions = todayData.sessions.length ? todayData.sessions.map(session => {
+          const attendanceAction = ["teacher", ...timetableManagerRoles, "dept_head", "dept_deputy"].includes(currentUser.role)
+            ? `<button class="btn secondary" data-action="open-session" data-session-id="${session.session_id}">Attendance</button>`
+            : "";
+          return `<article class="session-card"><div><strong>${escapeHTML(session.subject_name)}</strong><small>${escapeHTML(session.class_name)} · ${escapeHTML(session.starts_at ? new Date(session.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")}–${escapeHTML(session.ends_at ? new Date(session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")}</small><small>${escapeHTML(session.teacher_name || "")}${session.room ? ` · ${escapeHTML(session.room)}` : ""}</small></div>${attendanceAction}</article>`;
+        }).join("") : `<div class="empty">No generated sessions are scheduled for today.</div>`;
+        content.innerHTML = pageHeader(title, subtitle, `<span class="badge active">${escapeHTML(term.name)} · ${escapeHTML(term.academic_year)}</span>`) +
+          `<section class="panel timetable-panel"><div class="panel-head"><div><h2>Weekly schedule</h2><p>${slots.length} authorized timetable slots · shifts follow their configured weekday periods.</p></div></div>${weekGrid}</section>
+          <section class="panel timetable-panel"><div class="panel-head"><div><h2>Today's sessions</h2><p>${dateLabel(localDateValue())}</p></div></div><div class="session-list">${todaySessions}</div></section>`;
+      } catch (error) {
+        console.error("Could not load the user's timetable.", error);
+        renderAsyncError(title, subtitle, error);
+      }
+    }
+
+    async function renderAttendanceReports() {
+      const title = "Attendance reports";
+      const subtitle = "Review attendance counts and percentages by class for a selected period.";
+      renderLoadingState(title, subtitle, "Loading attendance report filters...");
+      try {
+        const { terms } = await apiRequest("/api/terms");
+        const currentTerm = terms.find(item => item.is_current) || terms[0];
+        const start = currentTerm ? String(currentTerm.start_date).slice(0, 10) : localDateValue();
+        const end = currentTerm ? String(currentTerm.end_date).slice(0, 10) : localDateValue();
+        content.innerHTML = pageHeader(title, subtitle) +
+          `<section class="panel timetable-panel"><div class="attendance-controls"><div class="field"><label for="report-start">From</label><input id="report-start" type="date" value="${escapeAttribute(start)}"></div><div class="field"><label for="report-end">To</label><input id="report-end" type="date" value="${escapeAttribute(end)}"></div><div class="field"><label for="report-group">Group by</label><select id="report-group"><option value="class">Class</option><option value="session">Session</option><option value="subject">Subject</option><option value="teacher">Teacher</option><option value="shift">Shift</option></select></div><button class="btn" data-action="load-attendance-report">Load report</button><button class="btn secondary" data-action="export-attendance-report">Export CSV</button></div><div id="attendance-report-results" class="empty">Choose a date range to load the report.</div></section>`;
+        document.getElementById("report-group").value = "class";
+        await loadAttendanceReport();
+      } catch (error) {
+        console.error("Could not load attendance report filters.", error);
+        renderAsyncError(title, subtitle, error);
+      }
+    }
+
+    async function loadAttendanceReport() {
+      const output = document.getElementById("attendance-report-results");
+      const startDate = document.getElementById("report-start")?.value;
+      const endDate = document.getElementById("report-end")?.value;
+      const groupBy = document.getElementById("report-group")?.value || "class";
+      if (!output) return;
+      if (!startDate || !endDate || endDate < startDate) {
+        output.innerHTML = `<div class="empty error-state">Choose a valid date range.</div>`;
+        return;
+      }
+      output.innerHTML = `<div class="empty">Loading attendance report...</div>`;
+      try {
+        const query = new URLSearchParams({ group_by: groupBy, start_date: startDate, end_date: endDate });
+        const { reports } = await apiRequest(`/api/reports/attendance?${query}`);
+        window.currentAttendanceReport = reports;
+        output.innerHTML = reports.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>${escapeHTML(groupBy)}</th><th>Present</th><th>Absent</th><th>Late</th><th>Excused</th><th>Attendance %</th></tr></thead><tbody>${reports.map(report => `<tr><td>${escapeHTML(report.group_name || report.group_key)}</td><td>${report.present}</td><td>${report.absent}</td><td>${report.late}</td><td>${report.excused}</td><td>${Number(report.attendance_percentage).toFixed(2)}%</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">No attendance data was found for this range.</div>`;
+      } catch (error) {
+        console.error("Could not load attendance report.", error);
+        output.innerHTML = `<div class="empty error-state">${escapeHTML(error.message)}</div>`;
+      }
+    }
+
+    function exportAttendanceReport() {
+      const reports = window.currentAttendanceReport;
+      if (!Array.isArray(reports) || !reports.length) {
+        showToast("Load a non-empty attendance report before exporting.");
+        return;
+      }
+      const headers = ["Name", "Present", "Absent", "Late", "Excused", "Attendance percentage"];
+      const rows = [headers, ...reports.map(row => [row.group_name || row.group_key, row.present, row.absent, row.late, row.excused, `${row.attendance_percentage}%`])];
+      const csv = rows.map(row => row.map(value => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+      const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `attendance-report-${localDateValue()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function renderSessionAttendance() {
+      stopQrCamera();
+      const title = "Session attendance";
+      const subtitle = "Select a class session to review or record the complete enrolled roster.";
+      renderLoadingState(title, subtitle, "Loading today's class sessions...");
+      try {
+        const [sessionData, classData] = await Promise.all([
+          apiRequest(`/api/sessions?date=${encodeURIComponent(localDateValue())}`),
+          apiRequest("/api/classes")
+        ]);
+        content.innerHTML = pageHeader(title, subtitle) +
+          `<section class="panel timetable-panel"><div class="attendance-controls"><div class="field"><label for="session-date">Date</label><input id="session-date" type="date" value="${localDateValue()}" max="${localDateValue()}"></div><div class="field"><label for="session-class">Class</label><select id="session-class"><option value="">All authorized classes</option>${classOptions(classData.classes)}</select></div><div class="field"><label for="session-picker">Session</label><select id="session-picker"><option value="">Select a session</option></select></div></div><div id="session-attendance-detail"><div class="empty">${sessionData.sessions.length ? "Choose a class session." : "No sessions are scheduled for this date."}</div></div></section>`;
+        const sessions = sessionData.sessions;
+        const datePicker = document.getElementById("session-date");
+        const classPicker = document.getElementById("session-class");
+        const sessionPicker = document.getElementById("session-picker");
+        const reload = async () => {
+          const query = new URLSearchParams({ date: datePicker.value });
+          if (classPicker.value) query.set("class_id", classPicker.value);
+          try {
+            const result = await apiRequest(`/api/sessions?${query}`);
+            sessionPicker.innerHTML = `<option value="">${result.sessions.length ? "Select a session" : "No sessions for this date"}</option>${result.sessions.map(item => `<option value="${item.session_id}">${escapeHTML(item.starts_at ? new Date(item.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")} · ${escapeHTML(item.class_name)} · ${escapeHTML(item.subject_name)}</option>`).join("")}`;
+            if (selectedAttendanceSessionId && result.sessions.some(item => String(item.session_id) === String(selectedAttendanceSessionId))) {
+              sessionPicker.value = selectedAttendanceSessionId;
+              await loadSessionAttendance(selectedAttendanceSessionId);
+            } else if (result.sessions.length === 1) {
+              sessionPicker.value = String(result.sessions[0].session_id);
+              await loadSessionAttendance(sessionPicker.value);
+            } else {
+              document.getElementById("session-attendance-detail").innerHTML = `<div class="empty">${result.sessions.length ? "Choose a class session." : "No sessions are scheduled for this date."}</div>`;
+            }
+          } catch (error) {
+            document.getElementById("session-attendance-detail").innerHTML = `<div class="empty error-state">${escapeHTML(error.message)}</div>`;
+          }
+        };
+        datePicker.addEventListener("change", reload);
+        classPicker.addEventListener("change", reload);
+        sessionPicker.addEventListener("change", () => {
+          selectedAttendanceSessionId = sessionPicker.value;
+          if (sessionPicker.value) loadSessionAttendance(sessionPicker.value);
+        });
+        if (selectedAttendanceSessionId) await reload();
+        else {
+          sessionPicker.innerHTML = `<option value="">${sessions.length ? "Select a session" : "No sessions for today"}</option>${sessions.map(item => `<option value="${item.session_id}">${escapeHTML(item.starts_at ? new Date(item.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")} · ${escapeHTML(item.class_name)} · ${escapeHTML(item.subject_name)}</option>`).join("")}`;
+          if (sessions.length === 1) {
+            sessionPicker.value = String(sessions[0].session_id);
+            selectedAttendanceSessionId = sessionPicker.value;
+            await loadSessionAttendance(sessionPicker.value);
+          }
+        }
+      } catch (error) {
+        console.error("Could not load sessions for attendance.", error);
+        renderAsyncError(title, subtitle, error);
+      }
+    }
+
+    async function loadSessionAttendance(sessionId) {
+      const detail = document.getElementById("session-attendance-detail");
+      if (!detail) return;
+      detail.innerHTML = `<div class="empty">Loading class roster...</div>`;
+      try {
+        const { session, roster } = await apiRequest(`/api/sessions/attendance?session_id=${encodeURIComponent(sessionId)}`);
+        const canRecord = ["director", "deputy_director", "office_head", "office_deputy", "office_staff", "dept_head", "dept_deputy", "teacher"].includes(currentUser?.role);
+        const recordedCount = roster.filter(student => student.status).length;
+        detail.innerHTML = `<div class="session-summary"><div><strong>${escapeHTML(session.class_name || `Class ${session.class_id}`)} · ${escapeHTML(session.subject_name || "Class session")}</strong><small>${dateLabel(session.session_date)} · ${session.starts_at ? new Date(session.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}–${session.ends_at ? new Date(session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</small></div><span class="badge ${recordedCount === roster.length && roster.length ? "active" : "pending"}">${recordedCount}/${roster.length} recorded</span></div>
+          ${canRecord ? `<div class="attendance-controls"><button type="button" class="btn secondary" data-action="mark-session-present">Mark all present</button><button type="button" class="btn" data-action="save-session-attendance" data-session-id="${sessionId}">Save attendance</button><button type="button" class="btn secondary" data-action="close-session-attendance" data-session-id="${sessionId}">Close session / mark remaining absent</button></div>
+          <div class="qr-scan-panel"><div class="field"><label for="qr-student-id">Scan QR code or enter student ID</label><div class="inline-form"><input id="qr-student-id" autocomplete="off" placeholder='{"type":"attendance","id":"..."}'><button class="btn secondary" data-action="submit-qr-scan" data-session-id="${sessionId}">Record scan</button><button class="btn secondary" data-action="start-qr-camera">Use camera</button></div></div><video id="qr-camera" class="qr-camera" playsinline hidden></video><p id="qr-scan-status" class="page-subtitle" aria-live="polite"></p></div>` : ""}
+          ${roster.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Status</th>${canRecord ? "<th>Mark status</th>" : ""}</tr></thead><tbody>${roster.map(student => `<tr data-session-student="${escapeAttribute(student.student_id)}"><td>${escapeHTML(student.name_english || student.name_khmer || student.student_id)}<small class="table-subtext">${escapeHTML(student.student_id)}</small></td><td>${escapeHTML(student.status || "Not recorded")}${student.source ? ` · ${escapeHTML(student.source)}` : ""}</td>${canRecord ? `<td><select class="session-status-select" aria-label="Attendance status for ${escapeAttribute(student.student_id)}"><option value="">Select status</option>${["present", "absent", "late", "excused"].map(status => `<option value="${status}" ${student.status === status ? "selected" : ""}>${status}</option>`).join("")}</select></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="empty">No students are enrolled in this class.</div>`}`;
+        const scanInput = document.getElementById("qr-student-id");
+        if (scanInput) scanInput.addEventListener("keydown", event => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            scanStudentForSession(sessionId, scanInput.value);
+          }
+        });
+      } catch (error) {
+        console.error("Could not load session attendance roster.", error);
+        detail.innerHTML = `<div class="empty error-state">${escapeHTML(error.message)}</div>`;
+      }
+    }
+
+    async function saveSessionAttendance(sessionId) {
+      const rows = [...document.querySelectorAll("[data-session-student]")];
+      const records = rows.map(row => ({
+        student_id: row.dataset.sessionStudent,
+        status: row.querySelector(".session-status-select")?.value || ""
+      }));
+      if (records.some(record => !record.status)) {
+        showToast("Choose an attendance status for every student, or use Mark all present.");
+        return;
+      }
+      try {
+        const result = await apiRequest("/api/sessions/attendance", {
+          method: "POST",
+          body: JSON.stringify({ session_id: Number(sessionId), records })
+        });
+        showToast(`${result.saved} attendance records saved.`);
+        await loadSessionAttendance(sessionId);
+      } catch (error) {
+        showToast(error.message);
+      }
+    }
+
+    async function scanStudentForSession(sessionId, studentValue) {
+      const status = document.getElementById("qr-scan-status");
+      const studentId = studentValue.trim();
+      if (!studentId) {
+        showToast("Scan or enter a student QR payload.");
+        return;
+      }
+      try {
+        const result = await apiRequest("/api/attendance/scan", {
+          method: "POST",
+          body: JSON.stringify({ session_id: Number(sessionId), qr_payload: studentId })
+        });
+        if (status) status.textContent = result.already ? `Already recorded: ${result.status}.` : `Attendance recorded: ${result.status}.`;
+        const input = document.getElementById("qr-student-id");
+        if (input) { input.value = ""; input.focus(); }
+        await loadSessionAttendance(sessionId);
+      } catch (error) {
+        if (status) status.textContent = error.message;
+        showToast(error.message);
+      }
+    }
+
+    async function startQrCamera() {
+      if (!("BarcodeDetector" in window) || !navigator.mediaDevices?.getUserMedia) {
+        showToast("QR camera scanning is not supported in this browser. Use a QR scanner keyboard or enter the scanned value.");
+        document.getElementById("qr-student-id")?.focus();
+        return;
+      }
+      try {
+        stopQrCamera();
+        const video = document.getElementById("qr-camera");
+        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+        qrMediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = qrMediaStream;
+        video.hidden = false;
+        await video.play();
+        const status = document.getElementById("qr-scan-status");
+        if (status) status.textContent = "Camera active. Hold a student QR code in view.";
+        const sessionId = selectedAttendanceSessionId;
+        const scanFrame = async () => {
+          if (!video.isConnected || video.hidden || !qrMediaStream) return;
+          try {
+            const codes = await detector.detect(video);
+            if (codes.length && codes[0].rawValue) {
+              stopQrCamera();
+              await scanStudentForSession(sessionId, codes[0].rawValue);
+              return;
+            }
+          } catch (error) {
+            console.error("Could not decode a QR code from the camera frame.", error);
+          }
+          window.requestAnimationFrame(scanFrame);
+        };
+        window.requestAnimationFrame(scanFrame);
+      } catch (error) {
+        stopQrCamera();
+        console.error("Could not start the QR scanner camera.", error);
+        showToast(error.message || "Camera access was denied.");
+      }
+    }
+
+    function stopQrCamera() {
+      if (qrMediaStream) {
+        qrMediaStream.getTracks().forEach(track => track.stop());
+        qrMediaStream = null;
+      }
+      const video = document.getElementById("qr-camera");
+      if (video) {
+        video.hidden = true;
+        video.srcObject = null;
+      }
+    }
+
+    async function renderMyAttendance() {
+      const title = "My attendance";
+      const subtitle = "Review session attendance for your account or linked children.";
+      renderLoadingState(title, subtitle, "Loading attendance history...");
+      try {
+        const [termData, sessionData] = await Promise.all([apiRequest("/api/terms"), apiRequest("/api/sessions")]);
+        const currentTerm = termData.terms.find(term => term.is_current) || termData.terms[0];
+        const sessions = currentTerm
+          ? sessionData.sessions.filter(session => Number(session.term_id) === Number(currentTerm.id))
+          : sessionData.sessions;
+        if (!sessions.length) {
+          content.innerHTML = pageHeader(title, subtitle) + `<section class="panel"><div class="empty">No generated sessions are available for the current term.</div></section>`;
+          return;
+        }
+        const rosterResults = await Promise.all(sessions.map(async session => {
+          const result = await apiRequest(`/api/sessions/attendance?session_id=${encodeURIComponent(session.session_id)}`);
+          return { session, roster: result.roster };
+        }));
+        const rows = rosterResults.flatMap(({ session, roster }) => roster.map(student => ({
+          session, student
+        }))).sort((a, b) => String(b.session.session_date).localeCompare(String(a.session.session_date)));
+        const counts = { present: 0, late: 0, absent: 0, excused: 0 };
+        rows.forEach(({ student }) => { if (counts[student.status] !== undefined) counts[student.status]++; });
+        const recorded = Object.values(counts).reduce((total, value) => total + value, 0);
+        const percentage = recorded ? ((counts.present + counts.late) / recorded * 100).toFixed(1) : "0.0";
+        content.innerHTML = pageHeader(title, subtitle, currentTerm ? `<span class="badge active">${escapeHTML(currentTerm.name)} · ${escapeHTML(currentTerm.academic_year)}</span>` : "") +
+          `<div class="cards attendance-summary-cards">${Object.entries(counts).map(([label, count]) => `<article class="card stat-card"><div class="stat-top">${label}</div><div class="stat-number">${count}</div><div class="stat-note">session records</div></article>`).join("")}<article class="card stat-card"><div class="stat-top">Attendance</div><div class="stat-number">${percentage}%</div><div class="stat-note">present or late</div></article></div>
+          ${rows.length ? `<section class="panel timetable-panel"><div class="panel-head"><div><h2>Session history</h2><p>${rows.length} student/session records in this term.</p></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Student</th><th>Class</th><th>Subject</th><th>Status</th></tr></thead><tbody>${rows.map(({ session, student }) => `<tr><td>${dateLabel(session.session_date)}</td><td>${escapeHTML(student.name_english || student.name_khmer || student.student_id)}</td><td>${escapeHTML(session.class_name)}</td><td>${escapeHTML(session.subject_name)}</td><td>${escapeHTML(student.status || "Not recorded")}</td></tr>`).join("")}</tbody></table></div></section>` : `<section class="panel"><div class="empty">Attendance history is empty for this term.</div></section>`}`;
+      } catch (error) {
+        console.error("Could not load attendance history.", error);
+        renderAsyncError(title, subtitle, error);
+      }
+    }
+
     function navigate(page, group = "") {
       if (!hasPagePermission(page)) {
         renderNoPermission(page);
@@ -1217,7 +1898,14 @@
       else if (page === "Add Student" || page === "Add Students") openStudentModal();
       else if (page === "Import from Excel") renderImportStudents();
       else if (page === "Teacher List") renderTeachers();
-      else if (page === "Take Attendance" || page === "Daily Attendance") renderAttendance();
+      else if (page === "Take Attendance") renderSessionAttendance();
+      else if (page === "Daily Attendance") renderAttendance();
+      else if (page === "Classes" || page === "Class Timetable") renderClassesManager();
+      else if (page === "Terms & Shifts") renderTermsAndShifts();
+      else if (page === "My Timetable") renderMyTimetable();
+      else if (page === "Session Attendance") renderSessionAttendance();
+      else if (page === "My Attendance" || page === "Monthly Attendance") renderMyAttendance();
+      else if (page === "Attendance Reports") renderAttendanceReports();
       else if (page === "User Management") renderUsers();
       else if (page === "My Account") renderMyAccount();
       else if (["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"].includes(page)) renderTelegram(page);
@@ -1493,6 +2181,114 @@
           console.error("Could not save attendance records.", error);
           showToast(error.message);
         }
+      } else if (action.dataset.action === "edit-class") {
+        await editClass(action.dataset.classId);
+      } else if (action.dataset.action === "delete-class") {
+        if (!window.confirm("Delete this class? Any timetable, enrollment, or session references will prevent deletion.")) return;
+        try {
+          await apiRequest(`/api/classes?id=${encodeURIComponent(action.dataset.classId)}`, { method: "DELETE" });
+          showToast("Class deleted.");
+          await renderClassesManager();
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "manage-class") {
+        const picker = document.getElementById("membership-class");
+        if (picker) {
+          picker.value = action.dataset.classId;
+          await loadClassMembership(picker.value);
+          document.getElementById("class-assignment-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      } else if (action.dataset.action === "remove-class-teacher" || action.dataset.action === "remove-class-student") {
+        const type = action.dataset.action === "remove-class-teacher" ? "teachers" : "students";
+        const key = type === "teachers" ? "teacher_id" : "student_id";
+        const personId = action.dataset[type === "teachers" ? "teacherId" : "studentId"];
+        try {
+          await apiRequest(`/api/classes/${type}?class_id=${encodeURIComponent(action.dataset.classId)}&${key}=${encodeURIComponent(personId)}`, { method: "DELETE" });
+          await loadClassMembership(action.dataset.classId);
+          showToast(type === "teachers" ? "Teacher assignment removed." : "Student enrollment removed.");
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "set-current-term") {
+        try {
+          await apiRequest("/api/terms", { method: "PATCH", body: JSON.stringify({ id: Number(action.dataset.termId), action: "set-current" }) });
+          showToast("Current term updated.");
+          await renderTermsAndShifts();
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "edit-term") {
+        await editTerm(action.dataset.termId);
+      } else if (action.dataset.action === "delete-term") {
+        if (!window.confirm("Delete this term? Terms with timetable slots or sessions cannot be deleted.")) return;
+        try {
+          await apiRequest(`/api/terms?id=${encodeURIComponent(action.dataset.termId)}`, { method: "DELETE" });
+          showToast("Term deleted.");
+          await renderTermsAndShifts();
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "delete-shift-period") {
+        if (!window.confirm("Remove this shift period? Existing timetable slots may prevent removal.")) return;
+        try {
+          await apiRequest(`/api/shifts/periods?id=${encodeURIComponent(action.dataset.periodId)}`, { method: "DELETE" });
+          showToast("Shift period removed.");
+          await renderTermsAndShifts();
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "edit-timetable-slot") {
+        const context = activeTimetableContext;
+        const slot = context?.slots.find(item => String(item.slot_id) === String(action.dataset.slotId));
+        const formElement = document.getElementById("timetable-slot-form");
+        if (!slot || !formElement) return;
+        formElement.elements.slot_id.value = slot.slot_id;
+        formElement.elements.period_key.value = `${slot.weekday}:${slot.period_no}`;
+        formElement.elements.subject_id.value = slot.subject_id;
+        formElement.elements.teacher_id.value = slot.teacher_id;
+        formElement.elements.room.value = slot.room || "";
+        formElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (action.dataset.action === "delete-timetable-slot") {
+        if (!window.confirm("Remove this timetable slot? Slots with recorded session attendance cannot be removed.")) return;
+        try {
+          await apiRequest(`/api/timetable?slot_id=${encodeURIComponent(action.dataset.slotId)}`, { method: "DELETE" });
+          showToast("Timetable slot removed.");
+          await renderClassesManager();
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "preview-session-generation") {
+        const termId = Number(action.dataset.termId);
+        const classId = Number(action.dataset.classId);
+        try {
+          const preview = await apiRequest("/api/timetable/generate", {
+            method: "POST", body: JSON.stringify({ term_id: termId, class_id: classId, dry_run: true })
+          });
+          const counts = preview.preview;
+          const shouldCreate = window.confirm(
+            `Session generation preview\n${counts.to_create} to create\n${counts.existing} already exist\n${counts.holiday_skipped} holiday sessions skipped\n\nGenerate these sessions now?`
+          );
+          if (!shouldCreate) return;
+          const result = await apiRequest("/api/timetable/generate", {
+            method: "POST", body: JSON.stringify({ term_id: termId, class_id: classId })
+          });
+          showToast(`Generated ${result.created} sessions; skipped ${result.skipped}.`);
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "load-attendance-report") {
+        await loadAttendanceReport();
+      } else if (action.dataset.action === "export-attendance-report") {
+        exportAttendanceReport();
+      } else if (action.dataset.action === "open-session") {
+        selectedAttendanceSessionId = action.dataset.sessionId;
+        navigate("Session Attendance", "Attendance");
+      } else if (action.dataset.action === "mark-session-present") {
+        document.querySelectorAll(".session-status-select").forEach(select => { select.value = "present"; });
+      } else if (action.dataset.action === "save-session-attendance") {
+        await saveSessionAttendance(action.dataset.sessionId);
+      } else if (action.dataset.action === "close-session-attendance") {
+        if (!window.confirm("Close attendance for this session and mark every unrecorded student absent?")) return;
+        try {
+          const result = await apiRequest("/api/attendance/close", {
+            method: "POST", body: JSON.stringify({ session_id: Number(action.dataset.sessionId) })
+          });
+          showToast(`Session closed. ${result.marked_absent} students marked absent.`);
+          await loadSessionAttendance(action.dataset.sessionId);
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "submit-qr-scan") {
+        await scanStudentForSession(action.dataset.sessionId, document.getElementById("qr-student-id")?.value || "");
+      } else if (action.dataset.action === "start-qr-camera") {
+        await startQrCamera();
+      } else if (action.dataset.action === "retry-current-page") {
+        navigate(currentPage, currentGroup);
       } else if (action.dataset.action === "notify") showToast("This section is ready to be connected to your school data.");
     });
     document.addEventListener("submit", async event => {
