@@ -19,13 +19,18 @@ export async function GET(request) {
     const termIdValue = url.searchParams.get("term_id");
     const classIdValue = url.searchParams.get("class_id");
     const date = url.searchParams.get("date");
+    const startDate = url.searchParams.get("start_date");
+    const endDate = url.searchParams.get("end_date");
     const termId = termIdValue ? parsePositiveId(termIdValue) : null;
     const classId = classIdValue ? parsePositiveId(classIdValue) : null;
-    if ((termIdValue && !termId) || (classIdValue && !classId) || (date && !validDate(date))) {
-      return jsonError("Provide valid term_id, class_id, or YYYY-MM-DD date filters.", 400);
+    if ((termIdValue && !termId) || (classIdValue && !classId) ||
+        (date && !validDate(date)) || (startDate && !validDate(startDate)) ||
+        (endDate && !validDate(endDate)) || (startDate && endDate && endDate < startDate) ||
+        (date && (startDate || endDate))) {
+      return jsonError("Provide valid term, class, or date filters; use either date or an ordered start_date/end_date range.", 400);
     }
 
-    const values = [termId, classId, date];
+    const values = [termId, classId, date, startDate, endDate];
     let scope = "";
     if (user.role === "teacher") {
       if (!user.teacher_id) scope = " AND FALSE";
@@ -81,6 +86,8 @@ export async function GET(request) {
        WHERE ($1::bigint IS NULL OR sessions.term_id = $1)
          AND ($2::bigint IS NULL OR sessions.class_id = $2)
          AND ($3::date IS NULL OR sessions.session_date = $3)
+         AND ($4::date IS NULL OR sessions.session_date >= $4)
+         AND ($5::date IS NULL OR sessions.session_date <= $5)
          ${scope}
        ORDER BY sessions.session_date, sessions.starts_at, classes.name`,
       values,

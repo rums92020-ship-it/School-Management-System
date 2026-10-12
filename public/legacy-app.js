@@ -77,6 +77,7 @@
     let currentLanguage = "en";
     let currentUser = null;
     let activeTimetableContext = null;
+    let availableTimetableShifts = [];
     let selectedAttendanceSessionId = "";
     let qrMediaStream = null;
 
@@ -217,7 +218,11 @@
 
     function t(key) {
       const text = uiText[key];
-      return text ? (text[currentLanguage] || text.en) : key;
+      return text
+        ? (text[currentLanguage] || text.en)
+        : currentLanguage === "km"
+          ? (timetableKhmerTranslations[key] || key)
+          : key;
     }
 
     function hasPagePermission(page) {
@@ -358,6 +363,8 @@
       else if (currentPage === "My Timetable") renderMyTimetable();
       else if (currentPage === "Session Attendance") renderSessionAttendance();
       else if (currentPage === "My Attendance") renderMyAttendance();
+      else if (currentPage === "Monthly Attendance") renderMyAttendance();
+      else if (currentPage === "Daily Attendance") renderAttendance();
       else if (currentPage === "Attendance Reports") renderAttendanceReports();
       else if (currentPage === "Import from Excel") renderImportStudents();
       else if (currentPage === "Bot Settings") renderTelegram("Bot Settings");
@@ -1036,11 +1043,8 @@
         const roleOptions = Object.entries(roleNames).map(([role, names]) =>
           `<option value="${role}">${escapeHTML(names[currentLanguage])}</option>`
         ).join("");
-        const studentOptions = data.students.map(student =>
+        const guardianStudentOptions = data.students.map(student =>
           `<option value="${escapeHTML(student.id)}">${escapeHTML(student.id)} · ${escapeHTML(student.name || "")} · ${escapeHTML(student.className)}</option>`
-        ).join("");
-        const teacherOptions = data.teachers.map(teacher =>
-          `<option value="${escapeHTML(teacher.id)}">${escapeHTML(teacher.id)} · ${escapeHTML(teacher.name || "")}</option>`
         ).join("");
         const rows = data.users.map(user => `<tr>
           <td>${escapeHTML(user.username)}</td>
@@ -1054,7 +1058,7 @@
           </form><button class="btn secondary" type="button" data-action="deactivate-user" data-user-id="${escapeHTML(user.id)}" ${user.id === currentUser.id ? "disabled" : ""}>Deactivate</button>` : "—"}</td>
         </tr>`).join("");
 
-        content.innerHTML = pageHeader(uiLabel("User Management", "គ្រប់គ្រងអ្នកប្រើប្រាស់"), uiLabel("Create accounts, assign roles and links, and deactivate or reset accounts.", "បង្កើតគណនី កំណត់តួនាទី និងតំណភ្ជាប់ បិទគណនី ឬកំណត់ពាក្យសម្ងាត់ឡើងវិញ។")) +
+        content.innerHTML = pageHeader(uiLabel("User Management", "គ្រប់គ្រងអ្នកប្រើប្រាស់"), uiLabel("Create accounts, assign roles, and deactivate or reset accounts.", "បង្កើតគណនី កំណត់តួនាទី បិទគណនី ឬកំណត់ពាក្យសម្ងាត់ឡើងវិញ។")) +
           `<section class="panel"><div class="panel-head"><div><h2>${uiLabel("Create user", "បង្កើតអ្នកប្រើប្រាស់")}</h2><p>${uiLabel("Passwords are hashed on the server and never returned to the browser.", "ពាក្យសម្ងាត់ត្រូវបានអ៊ិនគ្រីបនៅលើម៉ាស៊ីនមេ ហើយមិនត្រូវបានបញ្ជូនមកកម្មវិធីរុករកទេ។")}</p></div></div>
             <form id="user-create-form">
               <div class="form-grid">
@@ -1062,12 +1066,11 @@
                 <div class="field"><label for="new-user-name">${uiLabel("Full name", "ឈ្មោះពេញ")}</label><input id="new-user-name" name="fullName" required maxlength="160"></div>
                 <div class="field"><label for="new-user-role">${uiLabel("Role", "តួនាទី")}</label><select id="new-user-role" name="role" required><option value="">${uiLabel("Select role", "ជ្រើសរើសតួនាទី")}</option>${roleOptions}</select></div>
                 <div class="field user-link-field" data-link="department"><label for="new-user-department">${uiLabel("Department", "ដេប៉ាតឺម៉ង់")}</label><input id="new-user-department" name="department" maxlength="120"></div>
-                <div class="field user-link-field" data-link="student"><label for="new-user-student">${uiLabel("Student account link", "ភ្ជាប់គណនីសិស្ស")}</label><select id="new-user-student" name="studentId"><option value="">${uiLabel("Select student", "ជ្រើសរើសសិស្ស")}</option>${studentOptions}</select></div>
-                <div class="field user-link-field" data-link="teacher"><label for="new-user-teacher">${uiLabel("Teacher account link", "ភ្ជាប់គណនីគ្រូ")}</label><select id="new-user-teacher" name="teacherId"><option value="">${uiLabel("Select teacher", "ជ្រើសរើសគ្រូ")}</option>${teacherOptions}</select></div>
-                <div class="field user-link-field" data-link="guardian"><label for="new-user-children">${uiLabel("Guardian's children", "កូនរបស់អាណាព្យាបាល")}</label><select id="new-user-children" name="guardianStudentIds" multiple size="4">${studentOptions}</select></div>
+                <div class="field user-link-field" data-link="guardian"><label for="new-user-children">${uiLabel("Guardian's children", "កូនរបស់អាណាព្យាបាល")}</label><select id="new-user-children" name="guardianStudentIds" multiple size="4">${guardianStudentOptions}</select></div>
                 <div class="field"><label for="new-user-password">${uiLabel("Initial password (12+ characters)", "ពាក្យសម្ងាត់ដំបូង (យ៉ាងតិច ១២ តួអក្សរ)")}</label><input id="new-user-password" name="password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required></div>
               </div>
-              <div class="telegram-form-actions"><button type="submit" class="btn">${uiLabel("Create user", "បង្កើតអ្នកប្រើប្រាស់")}</button></div>
+              <p id="user-role-link-notice" class="notice" hidden></p>
+              <div class="telegram-form-actions"><button id="create-user-submit" type="submit" class="btn">${uiLabel("Create user", "បង្កើតអ្នកប្រើប្រាស់")}</button></div>
             </form>
           </section>
           <section class="panel" style="margin-top:16px"><div class="panel-head"><div><h2>${uiLabel("Accounts", "គណនី")}</h2><p>${data.users.length} ${uiLabel("user account(s)", "គណនីអ្នកប្រើ")}</p></div></div>
@@ -1080,10 +1083,15 @@
           document.querySelectorAll(".user-link-field").forEach(field => {
             const link = field.dataset.link;
             field.hidden = link === "department" ? !["dept_head", "dept_deputy"].includes(role)
-              : link === "student" ? role !== "student"
-                : link === "teacher" ? role !== "teacher"
-                  : role !== "guardian";
+              : role !== "guardian";
           });
+          const requiresRemovedLink = ["student", "teacher"].includes(role);
+          const notice = document.getElementById("user-role-link-notice");
+          notice.hidden = !requiresRemovedLink;
+          notice.textContent = currentLanguage === "km"
+            ? "ការបង្កើតគណនីសិស្ស និងគ្រូមិនអាចធ្វើបាននៅទីនេះទេ ព្រោះត្រូវការតំណភ្ជាប់ទៅកំណត់ត្រាសិស្ស ឬគ្រូ។"
+            : "Student and teacher accounts require a link to a student or teacher record. Creation for these roles is unavailable in this form.";
+          document.getElementById("create-user-submit").disabled = requiresRemovedLink;
         };
         roleSelect.addEventListener("change", updateRoleFields);
         updateRoleFields();
@@ -1210,6 +1218,130 @@
       content.innerHTML = pageHeader(page, descriptions[page] || descriptions["Bot Settings"]) + body;
     }
 
+    const timetableKhmerTranslations = {
+      "Classes": "ថ្នាក់រៀន",
+      "Class timetable": "កាលវិភាគថ្នាក់រៀន",
+      "Terms & shifts": "ឆមាស និងវេនសិក្សា",
+      "My timetable": "កាលវិភាគរបស់ខ្ញុំ",
+      "Session attendance": "វត្តមានតាមម៉ោងសិក្សា",
+      "My attendance": "វត្តមានរបស់ខ្ញុំ",
+      "Attendance reports": "របាយការណ៍វត្តមាន",
+      "Manage classes, assigned teachers, and student enrollment.": "គ្រប់គ្រងថ្នាក់ គ្រូបង្រៀន និងការចុះឈ្មោះសិស្ស។",
+      "Review weekly class periods and generate sessions for a term.": "មើលកាលវិភាគប្រចាំសប្តាហ៍ និងបង្កើតម៉ោងសិក្សាសម្រាប់ឆមាស។",
+      "Manage academic terms and review the fixed 90-minute shift periods.": "គ្រប់គ្រងឆមាសសិក្សា និងពិនិត្យម៉ោងសិក្សា ៩០ នាទីតាមវេន។",
+      "View your authorized weekly timetable and today's generated sessions.": "មើលកាលវិភាគប្រចាំសប្តាហ៍ និងម៉ោងសិក្សាថ្ងៃនេះដែលអ្នកមានសិទ្ធិ។",
+      "Select a class session to review or record the complete enrolled roster.": "ជ្រើសរើសម៉ោងសិក្សា ដើម្បីពិនិត្យ ឬកត់វត្តមានសិស្សទាំងអស់។",
+      "Review session attendance for your account or linked children.": "ពិនិត្យវត្តមានរបស់អ្នក ឬកូនដែលបានភ្ជាប់។",
+      "Review attendance counts and percentages by class for a selected period.": "ពិនិត្យចំនួន និងភាគរយវត្តមានតាមថ្នាក់ និងរយៈពេល។",
+      "Create a class": "បង្កើតថ្នាក់",
+      "A shift is required for the class timetable.": "ត្រូវជ្រើសរើសវេនសិក្សាសម្រាប់កាលវិភាគថ្នាក់។",
+      "Class name": "ឈ្មោះថ្នាក់",
+      "Academic year": "ឆ្នាំសិក្សា",
+      "Study level": "កម្រិតសិក្សា",
+      "Shift": "វេនសិក្សា",
+      "Create class": "បង្កើតថ្នាក់",
+      "Class list": "បញ្ជីថ្នាក់",
+      "Open timetable": "បើកកាលវិភាគ",
+      "No classes are available for your account.": "មិនមានថ្នាក់សម្រាប់គណនីរបស់អ្នកទេ។",
+      "Edit": "កែប្រែ",
+      "Teachers & students": "គ្រូ និងសិស្ស",
+      "Delete": "លុប",
+      "Class membership": "សមាជិកក្នុងថ្នាក់",
+      "Assign teachers and enroll or remove students.": "ចាត់តាំងគ្រូ និងបន្ថែម ឬដកសិស្សចេញ។",
+      "Assigned teachers": "គ្រូដែលបានចាត់តាំង",
+      "Enrolled students": "សិស្សដែលបានចុះឈ្មោះ",
+      "Assign": "ចាត់តាំង",
+      "Enroll": "ចុះឈ្មោះ",
+      "Remove": "ដកចេញ",
+      "No teachers assigned.": "មិនទាន់មានគ្រូចាត់តាំងទេ។",
+      "No students enrolled.": "មិនទាន់មានសិស្សចុះឈ្មោះទេ។",
+      "Create academic term": "បង្កើតឆមាសសិក្សា",
+      "Terms in the same academic year cannot overlap.": "ឆមាសក្នុងឆ្នាំសិក្សាដូចគ្នាមិនអាចត្រួតគ្នាបានទេ។",
+      "Term number": "លេខឆមាស",
+      "Term name": "ឈ្មោះឆមាស",
+      "Start date": "ថ្ងៃចាប់ផ្តើម",
+      "End date": "ថ្ងៃបញ្ចប់",
+      "Create term": "បង្កើតឆមាស",
+      "Academic terms": "ឆមាសសិក្សា",
+      "Set one term as current for schedules.": "កំណត់ឆមាសបច្ចុប្បន្នសម្រាប់កាលវិភាគ។",
+      "Current": "បច្ចុប្បន្ន",
+      "Set current": "កំណត់ជាបច្ចុប្បន្ន",
+      "Shifts and periods": "វេន និងម៉ោងសិក្សា",
+      "Each displayed period is exactly 90 minutes.": "ម៉ោងសិក្សានីមួយៗមានរយៈពេល ៩០ នាទី។",
+      "Weekday": "ថ្ងៃក្នុងសប្តាហ៍",
+      "Period": "ម៉ោងសិក្សា",
+      "Period number": "លេខម៉ោងសិក្សា",
+      "Start time": "ម៉ោងចាប់ផ្តើម",
+      "End time": "ម៉ោងបញ្ចប់",
+      "Add period": "បន្ថែមម៉ោងសិក្សា",
+      "Term": "ឆមាស",
+      "Weekly schedule": "កាលវិភាគប្រចាំសប្តាហ៍",
+      "Today's sessions": "ម៉ោងសិក្សាថ្ងៃនេះ",
+      "No timetable slots are configured for this term.": "មិនទាន់មានម៉ោងក្នុងកាលវិភាគសម្រាប់ឆមាសនេះទេ។",
+      "Preview & generate sessions": "មើលជាមុន និងបង្កើតម៉ោងសិក្សា",
+      "Save timetable slot": "រក្សាទុកម៉ោងកាលវិភាគ",
+      "No generated sessions are scheduled for today.": "ថ្ងៃនេះមិនមានម៉ោងសិក្សាដែលបានបង្កើតទេ។",
+      "Attendance": "វត្តមាន",
+      "From": "ចាប់ពី",
+      "To": "ដល់",
+      "Group by": "ដាក់ជាក្រុមតាម",
+      "Load report": "បង្ហាញរបាយការណ៍",
+      "Export CSV": "នាំចេញ CSV",
+      "Present": "មានវត្តមាន",
+      "Absent": "អវត្តមាន",
+      "Late": "មកយឺត",
+      "Excused": "មានការអនុញ្ញាត",
+      "Attendance %": "ភាគរយវត្តមាន",
+      "No attendance data was found for this range.": "មិនមានទិន្នន័យវត្តមានក្នុងរយៈពេលនេះទេ។",
+      "Date": "កាលបរិច្ឆេទ",
+      "Session": "ម៉ោងសិក្សា",
+      "All authorized classes": "គ្រប់ថ្នាក់ដែលមានសិទ្ធិ",
+      "Select a session": "ជ្រើសរើសម៉ោងសិក្សា",
+      "Choose a class session.": "សូមជ្រើសរើសម៉ោងសិក្សា។",
+      "No sessions are scheduled for this date.": "មិនមានម៉ោងសិក្សាតាមកាលវិភាគនៅថ្ងៃនេះទេ។",
+      "Mark all present": "កំណត់ទាំងអស់ថាមានវត្តមាន",
+      "Save attendance": "រក្សាទុកវត្តមាន",
+      "Close session / mark remaining absent": "បិទម៉ោងសិក្សា / កំណត់អ្នកនៅសល់ថាអវត្តមាន",
+      "Student": "សិស្ស",
+      "Status": "ស្ថានភាព",
+      "Not recorded": "មិនទាន់កត់ត្រា",
+      "No students are enrolled in this class.": "មិនមានសិស្សចុះឈ្មោះក្នុងថ្នាក់នេះទេ។",
+      "Scan QR code or enter student ID": "ស្កេន QR ឬបញ្ចូលលេខសម្គាល់សិស្ស",
+      "Record scan": "កត់ត្រាការស្កេន",
+      "Use camera": "ប្រើកាមេរ៉ា",
+      "Month": "ខែ",
+      "Session history": "ប្រវត្តិវត្តមានតាមម៉ោងសិក្សា",
+      "No session attendance was found for this month.": "មិនមានទិន្នន័យវត្តមានក្នុងខែនេះទេ។",
+      "Monday": "ថ្ងៃចន្ទ",
+      "Tuesday": "ថ្ងៃអង្គារ",
+      "Wednesday": "ថ្ងៃពុធ",
+      "Thursday": "ថ្ងៃព្រហស្បតិ៍",
+      "Friday": "ថ្ងៃសុក្រ",
+      "Saturday": "ថ្ងៃសៅរ៍",
+      "Sunday": "ថ្ងៃអាទិត្យ",
+      "Class": "ថ្នាក់",
+      "Actions": "សកម្មភាព",
+      "Name": "ឈ្មោះ",
+      "Dates": "កាលបរិច្ឆេទ",
+      "Attendance percentage": "ភាគរយវត្តមាន",
+      "Room (optional)": "បន្ទប់ (មិនចាំបាច់)",
+      "Teacher": "គ្រូបង្រៀន",
+      "Subject": "មុខវិជ្ជា",
+      "Time": "ម៉ោង",
+      "present": "មានវត្តមាន",
+      "absent": "អវត្តមាន",
+      "late": "មកយឺត",
+      "excused": "មានការអនុញ្ញាត",
+      "session records": "កំណត់ត្រាម៉ោងសិក្សា",
+      "present or late": "មានវត្តមាន ឬមកយឺត",
+      "No academic term is configured.": "មិនទាន់កំណត់ឆមាសសិក្សាទេ។",
+      "Loading classes and timetable data...": "កំពុងផ្ទុកថ្នាក់ និងកាលវិភាគ...",
+      "Loading terms and shifts...": "កំពុងផ្ទុកឆមាស និងវេនសិក្សា...",
+      "Loading your timetable...": "កំពុងផ្ទុកកាលវិភាគរបស់អ្នក...",
+      "Loading today's class sessions...": "កំពុងផ្ទុកម៉ោងសិក្សាថ្ងៃនេះ...",
+      "Loading attendance history...": "កំពុងផ្ទុកប្រវត្តិវត្តមាន...",
+      "No generated sessions are available for the current term.": "មិនមានម៉ោងសិក្សាដែលបានបង្កើតសម្រាប់ឆមាសបច្ចុប្បន្នទេ។"
+    };
     const timetableManagerRoles = ["director", "deputy_director", "office_head", "office_deputy", "office_staff"];
     const timetableLeadershipRoles = ["director", "deputy_director"];
     const weekdayNames = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -1221,6 +1353,22 @@
     function isTimetableLeader() {
       return timetableLeadershipRoles.includes(currentUser?.role);
     }
+
+    function translateTimetableContent() {
+      if (currentLanguage !== "km" || !content) return;
+      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const source = node.nodeValue.trim();
+        if (timetableKhmerTranslations[source]) {
+          node.nodeValue = node.nodeValue.replace(source, timetableKhmerTranslations[source]);
+        }
+        node = walker.nextNode();
+      }
+    }
+
+    const timetableTranslationObserver = new MutationObserver(translateTimetableContent);
+    timetableTranslationObserver.observe(content, { childList: true, characterData: true, subtree: true });
 
     function escapeAttribute(value) {
       return escapeHTML(value ?? "");
@@ -1258,6 +1406,7 @@
           apiRequest("/api/shifts"),
           apiRequest("/api/subjects")
         ]);
+        availableTimetableShifts = shiftData.shifts;
         if (currentPage === "Class Timetable") {
           await renderClassTimetable({ classes: classData.classes, terms: termData.terms, shifts: shiftData.shifts, subjects: subjectData.subjects });
           return;
@@ -1435,7 +1584,11 @@
         const periodNumbers = [...new Set(periods.map(period => Number(period.period_no)))].sort((a, b) => a - b);
         const cell = (weekday, periodNo) => {
           const slot = slots.find(item => Number(item.weekday) === weekday && Number(item.period_no) === periodNo);
-          return slot ? `<div class="timetable-slot"><strong>${escapeHTML(slot.subject_name)}</strong><small>${escapeHTML(slot.teacher_name || slot.teacher_id)}</small><small>${escapeHTML(String(slot.start_time).slice(0, 5))}–${escapeHTML(String(slot.end_time).slice(0, 5))}${slot.room ? ` · ${escapeHTML(slot.room)}` : ""}</small>${isTimetableManager() ? `<button class="text-link" data-action="edit-timetable-slot" data-slot-id="${slot.slot_id}">Edit</button>${isTimetableLeader() ? ` <button class="text-link danger-link" data-action="delete-timetable-slot" data-slot-id="${slot.slot_id}">Remove</button>` : ""}</div>` : `<span class="muted">—</span>`;
+          if (!slot) return `<span class="muted">—</span>`;
+          const editControls = isTimetableManager()
+            ? `<button class="text-link" data-action="edit-timetable-slot" data-slot-id="${slot.slot_id}">Edit</button>${isTimetableLeader() ? `<button class="text-link danger-link" data-action="delete-timetable-slot" data-slot-id="${slot.slot_id}">Remove</button>` : ""}`
+            : "";
+          return `<div class="timetable-slot"><strong>${escapeHTML(slot.subject_name)}</strong><small>${escapeHTML(slot.teacher_name || slot.teacher_id)}</small><small>${escapeHTML(String(slot.start_time).slice(0, 5))}–${escapeHTML(String(slot.end_time).slice(0, 5))}${slot.room ? ` · ${escapeHTML(slot.room)}` : ""}</small>${editControls}</div>`;
         };
         const periodsByNo = new Map(periods.map(period => [Number(period.period_no), period]));
         const grid = `<div class="table-wrap timetable-grid-wrap"><table class="table timetable-grid"><thead><tr><th>Period</th>${weekdays.map(day => `<th>${weekdayNames[day]}</th>`).join("")}</tr></thead><tbody>${periodNumbers.map(number => {
@@ -1512,7 +1665,8 @@
         if (academicYear === null) return;
         const studyLevel = window.prompt("Study level", item.study_level || "");
         if (studyLevel === null) return;
-        const shift = window.prompt("Shift ID (view Terms & shifts for IDs)", item.shift_id);
+        const shiftChoices = availableTimetableShifts.map(option => `${option.id}: ${option.name} (${option.code})`).join("\n");
+        const shift = window.prompt(`Shift ID:\n${shiftChoices}`, item.shift_id);
         if (shift === null) return;
         await apiRequest("/api/classes", {
           method: "PATCH",
@@ -1840,32 +1994,52 @@
       const subtitle = "Review session attendance for your account or linked children.";
       renderLoadingState(title, subtitle, "Loading attendance history...");
       try {
-        const [termData, sessionData] = await Promise.all([apiRequest("/api/terms"), apiRequest("/api/sessions")]);
+        const termData = await apiRequest("/api/terms");
         const currentTerm = termData.terms.find(term => term.is_current) || termData.terms[0];
-        const sessions = currentTerm
-          ? sessionData.sessions.filter(session => Number(session.term_id) === Number(currentTerm.id))
-          : sessionData.sessions;
-        if (!sessions.length) {
-          content.innerHTML = pageHeader(title, subtitle) + `<section class="panel"><div class="empty">No generated sessions are available for the current term.</div></section>`;
-          return;
-        }
-        const rosterResults = await Promise.all(sessions.map(async session => {
+        const now = new Date();
+        const monthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        content.innerHTML = pageHeader(title, subtitle) +
+          `<section class="panel timetable-panel"><div class="attendance-controls"><div class="field"><label for="history-month">Month</label><input id="history-month" type="month" value="${monthValue}"></div><div class="field"><label for="history-term">Term</label><select id="history-term">${termOptions(termData.terms, currentTerm?.id)}</select></div><button class="btn" data-action="load-my-attendance">Load history</button></div><div id="my-attendance-results"><div class="empty">Choose a month and term.</div></div></section>`;
+        await loadMyAttendanceHistory(monthValue, currentTerm?.id);
+      } catch (error) {
+        console.error("Could not load attendance history.", error);
+        renderAsyncError(title, subtitle, error);
+      }
+    }
+
+    async function loadMyAttendanceHistory(month, termId) {
+      const output = document.getElementById("my-attendance-results");
+      if (!output) return;
+      if (!/^\d{4}-\d{2}$/.test(month || "") || !termId) {
+        output.innerHTML = `<div class="empty error-state">Select a valid month and academic term.</div>`;
+        return;
+      }
+      output.innerHTML = `<div class="empty">Loading monthly attendance...</div>`;
+      try {
+        const [year, monthNumber] = month.split("-").map(Number);
+        const lastDay = new Date(year, monthNumber, 0).getDate();
+        const startDate = `${month}-01`;
+        const endDate = `${month}-${String(lastDay).padStart(2, "0")}`;
+        const query = new URLSearchParams({
+          term_id: String(termId), start_date: startDate, end_date: endDate
+        });
+        const selectedSessions = (await apiRequest(`/api/sessions?${query}`)).sessions;
+        if (selectedSessions.length > 250) throw new Error("This month has too many sessions to load at once. Choose a shorter period.");
+        const rosterResults = await Promise.all(selectedSessions.map(async session => {
           const result = await apiRequest(`/api/sessions/attendance?session_id=${encodeURIComponent(session.session_id)}`);
           return { session, roster: result.roster };
         }));
-        const rows = rosterResults.flatMap(({ session, roster }) => roster.map(student => ({
-          session, student
-        }))).sort((a, b) => String(b.session.session_date).localeCompare(String(a.session.session_date)));
+        const rows = rosterResults.flatMap(({ session, roster }) => roster.map(student => ({ session, student })))
+          .sort((a, b) => String(b.session.session_date).localeCompare(String(a.session.session_date)));
         const counts = { present: 0, late: 0, absent: 0, excused: 0 };
         rows.forEach(({ student }) => { if (counts[student.status] !== undefined) counts[student.status]++; });
         const recorded = Object.values(counts).reduce((total, value) => total + value, 0);
         const percentage = recorded ? ((counts.present + counts.late) / recorded * 100).toFixed(1) : "0.0";
-        content.innerHTML = pageHeader(title, subtitle, currentTerm ? `<span class="badge active">${escapeHTML(currentTerm.name)} · ${escapeHTML(currentTerm.academic_year)}</span>` : "") +
-          `<div class="cards attendance-summary-cards">${Object.entries(counts).map(([label, count]) => `<article class="card stat-card"><div class="stat-top">${label}</div><div class="stat-number">${count}</div><div class="stat-note">session records</div></article>`).join("")}<article class="card stat-card"><div class="stat-top">Attendance</div><div class="stat-number">${percentage}%</div><div class="stat-note">present or late</div></article></div>
-          ${rows.length ? `<section class="panel timetable-panel"><div class="panel-head"><div><h2>Session history</h2><p>${rows.length} student/session records in this term.</p></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Student</th><th>Class</th><th>Subject</th><th>Status</th></tr></thead><tbody>${rows.map(({ session, student }) => `<tr><td>${dateLabel(session.session_date)}</td><td>${escapeHTML(student.name_english || student.name_khmer || student.student_id)}</td><td>${escapeHTML(session.class_name)}</td><td>${escapeHTML(session.subject_name)}</td><td>${escapeHTML(student.status || "Not recorded")}</td></tr>`).join("")}</tbody></table></div></section>` : `<section class="panel"><div class="empty">Attendance history is empty for this term.</div></section>`}`;
+        output.innerHTML = `<div class="cards attendance-summary-cards">${Object.entries(counts).map(([label, count]) => `<article class="card stat-card"><div class="stat-top">${label}</div><div class="stat-number">${count}</div><div class="stat-note">session records</div></article>`).join("")}<article class="card stat-card"><div class="stat-top">Attendance</div><div class="stat-number">${percentage}%</div><div class="stat-note">present or late</div></article></div>
+          ${rows.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Student</th><th>Class</th><th>Subject</th><th>Status</th></tr></thead><tbody>${rows.map(({ session, student }) => `<tr><td>${dateLabel(session.session_date)}</td><td>${escapeHTML(student.name_english || student.name_khmer || student.student_id)}</td><td>${escapeHTML(session.class_name)}</td><td>${escapeHTML(session.subject_name)}</td><td>${escapeHTML(student.status || "Not recorded")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">No session attendance was found for this month.</div>`}`;
       } catch (error) {
-        console.error("Could not load attendance history.", error);
-        renderAsyncError(title, subtitle, error);
+        console.error("Could not load monthly session attendance.", error);
+        output.innerHTML = `<div class="empty error-state">${escapeHTML(error.message)}</div>`;
       }
     }
 
@@ -2267,6 +2441,11 @@
         await loadAttendanceReport();
       } else if (action.dataset.action === "export-attendance-report") {
         exportAttendanceReport();
+      } else if (action.dataset.action === "load-my-attendance") {
+        await loadMyAttendanceHistory(
+          document.getElementById("history-month")?.value || "",
+          document.getElementById("history-term")?.value || ""
+        );
       } else if (action.dataset.action === "open-session") {
         selectedAttendanceSessionId = action.dataset.sessionId;
         navigate("Session Attendance", "Attendance");
@@ -2302,8 +2481,6 @@
           fullName: String(form.get("fullName") || "").trim(),
           role: String(form.get("role") || ""),
           department: String(form.get("department") || "").trim() || null,
-          studentId: String(form.get("studentId") || "") || null,
-          teacherId: String(form.get("teacherId") || "") || null,
           guardianStudentIds: form.getAll("guardianStudentIds"),
           password: String(form.get("password") || "")
         };

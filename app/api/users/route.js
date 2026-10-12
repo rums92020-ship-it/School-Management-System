@@ -22,7 +22,7 @@ export async function GET() {
     if (response) return response;
 
     const pool = getPool();
-    const [users, students, teachers] = await Promise.all([
+    const [users, students] = await Promise.all([
       pool.query(
         `SELECT users.id, users.username, users.full_name AS "fullName", users.role,
           users.department, users.student_id AS "studentId",
@@ -42,13 +42,8 @@ export async function GET() {
           class_name AS "className"
          FROM students ORDER BY student_id`,
       ),
-      pool.query(
-        `SELECT teacher_id AS id,
-          COALESCE(name_english, name_khmer, name) AS name
-         FROM teachers ORDER BY teacher_id`,
-      ),
     ]);
-    return NextResponse.json({ users: users.rows, students: students.rows, teachers: teachers.rows });
+    return NextResponse.json({ users: users.rows, students: students.rows });
   } catch (error) {
     console.error("Could not load user management data.", error);
     return NextResponse.json({ error: "Could not load user management data." }, { status: 503 });
