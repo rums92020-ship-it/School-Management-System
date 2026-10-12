@@ -10,6 +10,8 @@ import {
   parseUuid,
   sessionTimezone,
 } from "../../../../lib/timetable";
+import { scheduleNotificationDelivery } from "../../../../lib/notifications";
+import { enqueueStudentScan, writeAttendanceAudit } from "../../../../lib/session-notifications";
 
 export const runtime = "nodejs";
 
@@ -118,7 +120,16 @@ export async function POST(request) {
         await client.query("COMMIT");
         return NextResponse.json({ already: true, status: saved.rows[0]?.status });
       }
+      await enqueueStudentScan(client, sessionId, resolvedStudentId, status);
+      await writeAttendanceAudit(client, {
+        sessionId,
+        studentId: resolvedStudentId,
+        newStatus: status,
+        changeSource: "qr",
+        changedBy: user.id,
+      });
       await client.query("COMMIT");
+      scheduleNotificationDelivery();
       return NextResponse.json({ already: false, status }, { status: 201 });
     } catch (error) {
       await client.query("ROLLBACK");

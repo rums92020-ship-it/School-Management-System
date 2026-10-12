@@ -9,6 +9,8 @@ import {
   parseUuid,
   sessionTimezone,
 } from "../../../../lib/timetable";
+import { scheduleNotificationDelivery } from "../../../../lib/notifications";
+import { enqueueAbsentNotices, writeAttendanceAudit } from "../../../../lib/session-notifications";
 
 export const runtime = "nodejs";
 
@@ -62,15 +64,26 @@ export async function POST(request) {
          RETURNING student_id`,
         [sessionId, user.id],
       );
+      for (const record of inserted.rows) {
+        await writeAttendanceAudit(client, {
+          sessionId,
+          studentId: record.student_id,
+          newStatus: "absent",
+          changeSource: "close",
+          changedBy: user.id,
+        });
+      }
       await client.query(
         "UPDATE class_sessions SET status = 'closed' WHERE id = $1",
         [sessionId],
       );
+      await enqueueAbsentNotices(client, sessionId);
       const total = await client.query(
         "SELECT COUNT(*)::int AS count FROM class_students WHERE class_id = $1",
         [session.class_id],
       );
       await client.query("COMMIT");
+      scheduleNotificationDelivery();
       return NextResponse.json({
         closed: true,
         marked_absent: inserted.rowCount,

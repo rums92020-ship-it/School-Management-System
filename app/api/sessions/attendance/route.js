@@ -8,6 +8,11 @@ import {
   managementRoles,
   parseUuid,
 } from "../../../../lib/timetable";
+import { scheduleNotificationDelivery } from "../../../../lib/notifications";
+import {
+  enqueueAbsenceCorrection,
+  writeAttendanceAudit,
+} from "../../../../lib/session-notifications";
 
 export const runtime = "nodejs";
 
@@ -112,7 +117,19 @@ export async function POST(request) {
         await client.query("ROLLBACK");
         return jsonError("Every attendance student must be enrolled in this class.", 400);
       }
+      const priorAttendance = await client.query(
+        "SELECT student_id, status FROM session_attendance WHERE session_id = $1 AND student_id = ANY($2::varchar[])",
+        [sessionId, [...seen]],
+      );
+      const priorByStudent = new Map(priorAttendance.rows.map(row => [row.student_id, row.status]));
+      const sessionState = await client.query(
+        "SELECT absent_notified_at FROM class_sessions WHERE id = $1",
+        [sessionId],
+      );
+      let changed = false;
       for (const record of body.records) {
+        const studentId = record.student_id.trim();
+        const oldStatus = priorByStudent.get(studentId) || null;
         await client.query(
           `INSERT INTO session_attendance
             (session_id, student_id, status, source, recorded_by, updated_at)
@@ -120,10 +137,25 @@ export async function POST(request) {
            ON CONFLICT (session_id, student_id)
            DO UPDATE SET status = EXCLUDED.status, source = 'manual',
              recorded_by = EXCLUDED.recorded_by, updated_at = NOW()`,
-          [sessionId, record.student_id.trim(), record.status, user.id],
+          [sessionId, studentId, record.status, user.id],
         );
+        if (oldStatus !== record.status) {
+          changed = true;
+          await writeAttendanceAudit(client, {
+            sessionId,
+            studentId,
+            oldStatus,
+            newStatus: record.status,
+            changeSource: "manual",
+            changedBy: user.id,
+          });
+          if (oldStatus === "absent" && record.status !== "absent" && sessionState.rows[0]?.absent_notified_at) {
+            await enqueueAbsenceCorrection(client, sessionId, studentId, record.status);
+          }
+        }
       }
       await client.query("COMMIT");
+      if (changed) scheduleNotificationDelivery();
       return NextResponse.json({ saved: body.records.length });
     } catch (error) {
       await client.query("ROLLBACK");

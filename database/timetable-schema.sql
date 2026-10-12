@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS public.classes (
     UNIQUE (name, academic_year)
 );
 
+-- Keep legacy class_name values unchanged; they do not determine the correct year or shift.
 CREATE TABLE IF NOT EXISTS public.subjects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(120) NOT NULL,
