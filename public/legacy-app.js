@@ -1447,7 +1447,7 @@
             name: String(form.get("name") || "").trim(),
             academic_year: String(form.get("academic_year") || "").trim(),
             study_level: String(form.get("study_level") || "").trim() || null,
-            shift_id: Number(form.get("shift_id"))
+            shift_id: String(form.get("shift_id") || "")
           })
         });
         showToast("Class created.");
@@ -1487,7 +1487,7 @@
       try {
         await apiRequest(`/api/classes/${kind === "teacher" ? "teachers" : "students"}`, {
           method: "POST",
-          body: JSON.stringify({ class_id: Number(classId), [field]: String(new FormData(event.currentTarget).get(field) || "") })
+          body: JSON.stringify({ class_id: String(classId), [field]: String(new FormData(event.currentTarget).get(field) || "") })
         });
         await loadClassMembership(classId);
         showToast(kind === "teacher" ? "Teacher assigned." : "Student enrolled.");
@@ -1537,7 +1537,8 @@
     async function createShiftPeriod(event) {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      const payload = Object.fromEntries(["shift_id", "weekday", "period_no"].map(key => [key, Number(form.get(key))]));
+      const payload = Object.fromEntries(["weekday", "period_no"].map(key => [key, Number(form.get(key))]));
+      payload.shift_id = String(form.get("shift_id") || "");
       payload.start_time = form.get("start_time");
       payload.end_time = form.get("end_time");
       try {
@@ -1579,7 +1580,7 @@
         ]);
         const periods = periodData.periods;
         const slots = slotData.slots;
-        activeTimetableContext = { classId: Number(classId), termId: Number(termId), data, periods, slots };
+        activeTimetableContext = { classId: String(classId), termId: String(termId), data, periods, slots };
         const weekdays = [...new Set(periods.map(period => Number(period.weekday)))].sort((a, b) => a - b);
         const periodNumbers = [...new Set(periods.map(period => Number(period.period_no)))].sort((a, b) => a - b);
         const cell = (weekday, periodNo) => {
@@ -1601,7 +1602,7 @@
         const subjects = data.subjects.filter(subject => subject.is_active);
         const teacherOptions = teacherData.teachers.map(teacher => `<option value="${escapeAttribute(teacher.teacher_id)}">${escapeHTML(teacher.name_english || teacher.name || teacher.name_khmer || teacher.teacher_id)}</option>`).join("");
         const canEdit = isTimetableManager();
-        editor.innerHTML = `<div class="notice">${escapeHTML(selectedClass.name)} · ${escapeHTML(data.shifts.find(shift => Number(shift.id) === Number(selectedClass.shift_id))?.name || selectedClass.shift_code || "")} · ${periods.length} configured weekday periods.</div>${grid}
+        editor.innerHTML = `<div class="notice">${escapeHTML(selectedClass.name)} · ${escapeHTML(data.shifts.find(shift => String(shift.id) === String(selectedClass.shift_id))?.name || selectedClass.shift_code || "")} · ${periods.length} configured weekday periods.</div>${grid}
           ${canEdit ? `<div class="timetable-toolbar"><button class="btn secondary" data-action="preview-session-generation" data-term-id="${termId}" data-class-id="${classId}">Preview & generate sessions</button></div>
           <form id="timetable-slot-form" class="timetable-form"><input type="hidden" name="slot_id"><input type="hidden" name="term_id" value="${termId}"><input type="hidden" name="class_id" value="${classId}">
             <div class="field"><label>Weekday / period</label><select name="period_key" required><option value="">Select shift period</option>${periods.map(period => `<option value="${period.weekday}:${period.period_no}" data-weekday="${period.weekday}" data-number="${period.period_no}" data-start="${escapeAttribute(String(period.start_time).slice(0, 5))}" data-end="${escapeAttribute(String(period.end_time).slice(0, 5))}">${escapeHTML(weekdayNames[period.weekday])} · Period ${period.period_no} (${escapeHTML(String(period.start_time).slice(0, 5))}–${escapeHTML(String(period.end_time).slice(0, 5))})</option>`).join("")}</select></div>
@@ -1630,18 +1631,18 @@
         return;
       }
       const payload = {
-        term_id: Number(form.get("term_id")),
-        class_id: Number(form.get("class_id")),
+        term_id: String(form.get("term_id") || ""),
+        class_id: String(form.get("class_id") || ""),
         weekday,
         period_no: periodNo,
         start_time: periodOption.dataset.start,
         end_time: periodOption.dataset.end,
-        subject_id: Number(form.get("subject_id")),
+        subject_id: String(form.get("subject_id") || ""),
         teacher_id: String(form.get("teacher_id") || ""),
         room: String(form.get("room") || "").trim() || null
       };
       const slotId = String(form.get("slot_id") || "");
-      if (slotId) payload.slot_id = Number(slotId);
+      if (slotId) payload.slot_id = slotId;
       try {
         await apiRequest("/api/timetable", {
           method: slotId ? "PATCH" : "POST",
@@ -1671,9 +1672,9 @@
         await apiRequest("/api/classes", {
           method: "PATCH",
           body: JSON.stringify({
-            class_id: Number(item.class_id), name: name.trim(),
+            class_id: String(item.class_id), name: name.trim(),
             academic_year: academicYear.trim(), study_level: studyLevel.trim() || null,
-            shift_id: Number(shift), is_active: item.is_active
+            shift_id: String(shift), is_active: item.is_active
           })
         });
         showToast("Class updated.");
@@ -1701,7 +1702,7 @@
         await apiRequest("/api/terms", {
           method: "PATCH",
           body: JSON.stringify({
-            id: Number(term.id), name: name.trim(), academic_year: academicYear.trim(),
+            id: String(term.id), name: name.trim(), academic_year: academicYear.trim(),
             term_no: Number(termNo), start_date: startDate, end_date: endDate
           })
         });
@@ -1907,7 +1908,7 @@
       try {
         const result = await apiRequest("/api/sessions/attendance", {
           method: "POST",
-          body: JSON.stringify({ session_id: Number(sessionId), records })
+          body: JSON.stringify({ session_id: String(sessionId), records })
         });
         showToast(`${result.saved} attendance records saved.`);
         await loadSessionAttendance(sessionId);
@@ -1926,7 +1927,7 @@
       try {
         const result = await apiRequest("/api/attendance/scan", {
           method: "POST",
-          body: JSON.stringify({ session_id: Number(sessionId), qr_payload: studentId })
+          body: JSON.stringify({ session_id: String(sessionId), qr_payload: studentId })
         });
         if (status) status.textContent = result.already ? `Already recorded: ${result.status}.` : `Attendance recorded: ${result.status}.`;
         const input = document.getElementById("qr-student-id");
@@ -2382,7 +2383,7 @@
         } catch (error) { showToast(error.message); }
       } else if (action.dataset.action === "set-current-term") {
         try {
-          await apiRequest("/api/terms", { method: "PATCH", body: JSON.stringify({ id: Number(action.dataset.termId), action: "set-current" }) });
+          await apiRequest("/api/terms", { method: "PATCH", body: JSON.stringify({ id: String(action.dataset.termId), action: "set-current" }) });
           showToast("Current term updated.");
           await renderTermsAndShifts();
         } catch (error) { showToast(error.message); }
@@ -2421,8 +2422,8 @@
           await renderClassesManager();
         } catch (error) { showToast(error.message); }
       } else if (action.dataset.action === "preview-session-generation") {
-        const termId = Number(action.dataset.termId);
-        const classId = Number(action.dataset.classId);
+        const termId = String(action.dataset.termId);
+        const classId = String(action.dataset.classId);
         try {
           const preview = await apiRequest("/api/timetable/generate", {
             method: "POST", body: JSON.stringify({ term_id: termId, class_id: classId, dry_run: true })
@@ -2457,7 +2458,7 @@
         if (!window.confirm("Close attendance for this session and mark every unrecorded student absent?")) return;
         try {
           const result = await apiRequest("/api/attendance/close", {
-            method: "POST", body: JSON.stringify({ session_id: Number(action.dataset.sessionId) })
+            method: "POST", body: JSON.stringify({ session_id: String(action.dataset.sessionId) })
           });
           showToast(`Session closed. ${result.marked_absent} students marked absent.`);
           await loadSessionAttendance(action.dataset.sessionId);

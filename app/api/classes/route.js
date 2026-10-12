@@ -4,7 +4,7 @@ import { getPool } from "../../../lib/db";
 import {
   databaseUnavailableResponse,
   jsonError,
-  parsePositiveId,
+  parseUuid,
   termManagerRoles,
 } from "../../../lib/timetable";
 
@@ -21,30 +21,30 @@ export async function GET() {
     let result;
     if (user.role === "teacher" && user.teacher_id) {
       result = await pool.query(
-        `SELECT classes.class_id, classes.name, classes.study_level, classes.academic_year,
+        `SELECT classes.id AS class_id, classes.name, classes.study_level, classes.academic_year,
           classes.shift_id, shifts.code AS shift_code, classes.is_active
          FROM classes JOIN shifts ON shifts.id = classes.shift_id
-         JOIN class_teachers ON class_teachers.class_id = classes.class_id
+         JOIN class_teachers ON class_teachers.class_id = classes.id
          WHERE class_teachers.teacher_id = $1
          ORDER BY classes.academic_year DESC, classes.name`,
         [user.teacher_id],
       );
     } else if (user.role === "student" && user.student_id) {
       result = await pool.query(
-        `SELECT classes.class_id, classes.name, classes.study_level, classes.academic_year,
+        `SELECT classes.id AS class_id, classes.name, classes.study_level, classes.academic_year,
           classes.shift_id, shifts.code AS shift_code, classes.is_active
          FROM classes JOIN shifts ON shifts.id = classes.shift_id
-         JOIN class_students ON class_students.class_id = classes.class_id
+         JOIN class_students ON class_students.class_id = classes.id
          WHERE class_students.student_id = $1
          ORDER BY classes.academic_year DESC, classes.name`,
         [user.student_id],
       );
     } else if (user.role === "guardian" && user.id) {
       result = await pool.query(
-        `SELECT DISTINCT classes.class_id, classes.name, classes.study_level, classes.academic_year,
+        `SELECT DISTINCT classes.id AS class_id, classes.name, classes.study_level, classes.academic_year,
           classes.shift_id, shifts.code AS shift_code, classes.is_active
          FROM classes JOIN shifts ON shifts.id = classes.shift_id
-         JOIN class_students ON class_students.class_id = classes.class_id
+         JOIN class_students ON class_students.class_id = classes.id
          JOIN guardian_students ON guardian_students.student_id = class_students.student_id
          WHERE guardian_students.guardian_user_id = $1
          ORDER BY classes.academic_year DESC, classes.name`,
@@ -52,11 +52,11 @@ export async function GET() {
       );
     } else if ((user.role === "dept_head" || user.role === "dept_deputy") && user.department) {
       result = await pool.query(
-        `SELECT DISTINCT classes.class_id, classes.name, classes.study_level, classes.academic_year,
+        `SELECT DISTINCT classes.id AS class_id, classes.name, classes.study_level, classes.academic_year,
           classes.shift_id, shifts.code AS shift_code, classes.is_active
          FROM classes JOIN shifts ON shifts.id = classes.shift_id
-         JOIN timetable_slots ON timetable_slots.class_id = classes.class_id
-         JOIN subjects ON subjects.subject_id = timetable_slots.subject_id
+         JOIN timetable_slots ON timetable_slots.class_id = classes.id
+         JOIN subjects ON subjects.id = timetable_slots.subject_id
          WHERE subjects.department = $1
          ORDER BY classes.academic_year DESC, classes.name`,
         [user.department],
@@ -65,7 +65,7 @@ export async function GET() {
       result = { rows: [] };
     } else {
       result = await pool.query(
-        `SELECT classes.class_id, classes.name, classes.study_level, classes.academic_year,
+        `SELECT classes.id AS class_id, classes.name, classes.study_level, classes.academic_year,
           classes.shift_id, shifts.code AS shift_code, classes.is_active
          FROM classes JOIN shifts ON shifts.id = classes.shift_id
          ORDER BY classes.academic_year DESC, classes.name`,
@@ -85,7 +85,7 @@ export async function POST(request) {
     if (!body || typeof body !== "object" || Array.isArray(body) ||
         typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 100 ||
         typeof body.academic_year !== "string" || !body.academic_year.trim() || body.academic_year.trim().length > 30 ||
-        !Number.isSafeInteger(body.shift_id) || body.shift_id < 1 ||
+        !parseUuid(body.shift_id) ||
         (body.study_level !== undefined && body.study_level !== null &&
           (typeof body.study_level !== "string" || body.study_level.length > 80))) {
       return jsonError("Class name, academic year, and shift are required; study level must be valid.", 400);
@@ -93,7 +93,7 @@ export async function POST(request) {
     const result = await getPool().query(
       `INSERT INTO classes (name, study_level, academic_year, shift_id)
        VALUES ($1, $2, $3, $4)
-       RETURNING class_id, name, study_level, academic_year, shift_id, is_active`,
+       RETURNING id AS class_id, name, study_level, academic_year, shift_id, is_active`,
       [body.name.trim(), body.study_level?.trim() || null, body.academic_year.trim(), body.shift_id],
     );
     return NextResponse.json({ class: result.rows[0] }, { status: 201 });
@@ -110,19 +110,19 @@ export async function PATCH(request) {
     const { response } = await requireRole(classEditors);
     if (response) return response;
     const body = await request.json();
-    const id = parsePositiveId(body?.class_id);
+    const id = parseUuid(body?.class_id);
     if (!id || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 100 ||
         typeof body.academic_year !== "string" || !body.academic_year.trim() || body.academic_year.trim().length > 30 ||
-        !Number.isSafeInteger(body.shift_id) || body.shift_id < 1 ||
+        !parseUuid(body.shift_id) ||
         (body.study_level !== undefined && body.study_level !== null &&
           (typeof body.study_level !== "string" || body.study_level.length > 80)) ||
         (body.is_active !== undefined && typeof body.is_active !== "boolean")) {
       return jsonError("Provide a valid class ID, name, academic year, shift, and optional study level/status.", 400);
     }
     const pool = getPool();
-    const current = await pool.query("SELECT shift_id FROM classes WHERE class_id = $1", [id]);
+    const current = await pool.query("SELECT shift_id FROM classes WHERE id = $1", [id]);
     if (!current.rowCount) return jsonError("Class not found.", 404);
-    if (Number(current.rows[0].shift_id) !== body.shift_id) {
+    if (current.rows[0].shift_id !== body.shift_id) {
       const hasSlots = await pool.query("SELECT 1 FROM timetable_slots WHERE class_id = $1 LIMIT 1", [id]);
       if (hasSlots.rowCount) {
         return jsonError("Remove or update the class timetable slots before changing its shift.", 409);
@@ -132,8 +132,8 @@ export async function PATCH(request) {
       `UPDATE classes
        SET name = $1, study_level = $2, academic_year = $3, shift_id = $4,
            is_active = COALESCE($5, is_active)
-       WHERE class_id = $6
-       RETURNING class_id, name, study_level, academic_year, shift_id, is_active`,
+       WHERE id = $6
+       RETURNING id AS class_id, name, study_level, academic_year, shift_id, is_active`,
       [body.name.trim(), body.study_level?.trim() || null, body.academic_year.trim(), body.shift_id, body.is_active ?? null, id],
     );
     if (!result.rowCount) return jsonError("Class not found.", 404);
@@ -150,9 +150,9 @@ export async function DELETE(request) {
   try {
     const { response } = await requireRole(termManagerRoles);
     if (response) return response;
-    const id = parsePositiveId(new URL(request.url).searchParams.get("id"));
+    const id = parseUuid(new URL(request.url).searchParams.get("id"));
     if (!id) return jsonError("Provide a valid class ID.", 400);
-    const result = await getPool().query("DELETE FROM classes WHERE class_id = $1 RETURNING class_id", [id]);
+    const result = await getPool().query("DELETE FROM classes WHERE id = $1 RETURNING id", [id]);
     if (!result.rowCount) return jsonError("Class not found.", 404);
     return NextResponse.json({ ok: true });
   } catch (error) {

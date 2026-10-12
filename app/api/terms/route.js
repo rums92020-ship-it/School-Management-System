@@ -4,7 +4,7 @@ import { getPool } from "../../../lib/db";
 import {
   databaseUnavailableResponse,
   jsonError,
-  parsePositiveId,
+  parseUuid,
   replaceFutureUnattendedSessionsForSlot,
   termManagerRoles,
   validDate,
@@ -28,7 +28,7 @@ async function overlaps(client, term, excludeId = null) {
      WHERE academic_year = $1
        AND start_date <= $3::date
        AND end_date >= $2::date
-       AND ($4::bigint IS NULL OR id <> $4)
+       AND ($4::uuid IS NULL OR id <> $4)
      LIMIT 1`,
     [term.academicYear, term.startDate, term.endDate, excludeId],
   );
@@ -92,7 +92,7 @@ export async function PATCH(request) {
     const { response } = await requireRole(termManagerRoles);
     if (response) return response;
     const body = await request.json();
-    const id = parsePositiveId(body?.id);
+    const id = parseUuid(body?.id);
     if (!id) return jsonError("Provide a valid term ID.", 400);
     if (body.action === "set-current") {
       const client = await getPool().connect();
@@ -137,10 +137,10 @@ export async function PATCH(request) {
          RETURNING id, academic_year, term_no, name, start_date, end_date, is_current`,
         [term.academicYear, term.termNo, term.name, term.startDate, term.endDate, id],
       );
-      const slots = await client.query("SELECT slot_id FROM timetable_slots WHERE term_id = $1", [id]);
+      const slots = await client.query("SELECT id AS slot_id FROM timetable_slots WHERE term_id = $1", [id]);
       for (const slot of slots.rows) {
         await client.query(
-          "UPDATE timetable_slots SET valid_from = $1, valid_to = $2 WHERE slot_id = $3",
+          "UPDATE timetable_slots SET valid_from = $1, valid_to = $2 WHERE id = $3",
           [term.startDate, term.endDate, slot.slot_id],
         );
         await replaceFutureUnattendedSessionsForSlot(client, slot.slot_id);
@@ -165,7 +165,7 @@ export async function DELETE(request) {
   try {
     const { response } = await requireRole(termManagerRoles);
     if (response) return response;
-    const id = parsePositiveId(new URL(request.url).searchParams.get("id"));
+    const id = parseUuid(new URL(request.url).searchParams.get("id"));
     if (!id) return jsonError("Provide a valid term ID.", 400);
     const result = await getPool().query("DELETE FROM terms WHERE id = $1 RETURNING id", [id]);
     if (!result.rowCount) return jsonError("Term not found.", 404);

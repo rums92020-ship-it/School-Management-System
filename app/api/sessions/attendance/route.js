@@ -6,7 +6,7 @@ import {
   databaseUnavailableResponse,
   jsonError,
   managementRoles,
-  parsePositiveId,
+  parseUuid,
 } from "../../../../lib/timetable";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function GET(request) {
   try {
     const { user, response } = await requireRole(roles);
     if (response) return response;
-    const sessionId = parsePositiveId(new URL(request.url).searchParams.get("session_id"));
+    const sessionId = parseUuid(new URL(request.url).searchParams.get("session_id"));
     if (!sessionId) return jsonError("Provide a valid session_id.", 400);
 
     const client = await getPool().connect();
@@ -48,9 +48,9 @@ export async function GET(request) {
          JOIN class_students ON class_students.class_id = class_sessions.class_id
          JOIN students ON students.student_id = class_students.student_id
          LEFT JOIN session_attendance
-           ON session_attendance.session_id = class_sessions.session_id
+           ON session_attendance.session_id = class_sessions.id
           AND session_attendance.student_id = students.student_id
-         WHERE class_sessions.session_id = $1 ${studentFilter}
+         WHERE class_sessions.id = $1 ${studentFilter}
          ORDER BY students.student_id`,
         values,
       );
@@ -70,7 +70,7 @@ export async function POST(request) {
     ]);
     if (response) return response;
     const body = await request.json();
-    const sessionId = parsePositiveId(String(body?.session_id ?? ""));
+    const sessionId = parseUuid(body?.session_id);
     if (!sessionId || !Array.isArray(body.records) || body.records.length > 1000) {
       return jsonError("Provide a valid session_id and up to 1000 attendance records.", 400);
     }
@@ -100,7 +100,7 @@ export async function POST(request) {
         return jsonError("You do not have permission to record attendance for this session.", 403);
       }
       await client.query(
-        "SELECT session_id FROM class_sessions WHERE session_id = $1 FOR UPDATE",
+        "SELECT id FROM class_sessions WHERE id = $1 FOR UPDATE",
         [sessionId],
       );
       const enrolled = await client.query(

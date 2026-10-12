@@ -5,7 +5,7 @@ import {
   authorizeClass,
   databaseUnavailableResponse,
   jsonError,
-  managementRoles,
+  parseUuid,
   termManagerRoles,
 } from "../../../../lib/timetable";
 
@@ -18,8 +18,8 @@ export async function GET(request) {
       "dept_head", "dept_deputy", "teacher", "student", "guardian",
     ]);
     if (response) return response;
-    const classId = Number(new URL(request.url).searchParams.get("class_id"));
-    if (!Number.isSafeInteger(classId) || classId < 1) return jsonError("Provide a valid class ID.", 400);
+    const classId = parseUuid(new URL(request.url).searchParams.get("class_id"));
+    if (!classId) return jsonError("Provide a valid class ID.", 400);
     const client = await getPool().connect();
     try {
       if (!await authorizeClass(client, user, classId)) {
@@ -52,7 +52,7 @@ export async function POST(request) {
     const { response } = await requireRole(termManagerRoles);
     if (response) return response;
     const body = await request.json();
-    if (!body || !Number.isSafeInteger(body.class_id) || body.class_id < 1 ||
+    if (!body || !parseUuid(body.class_id) ||
         typeof body.teacher_id !== "string" || !body.teacher_id.trim() || body.teacher_id.length > 40) {
       return jsonError("Provide a valid class ID and teacher ID.", 400);
     }
@@ -74,9 +74,9 @@ export async function DELETE(request) {
     const { response } = await requireRole(termManagerRoles);
     if (response) return response;
     const url = new URL(request.url);
-    const classId = Number(url.searchParams.get("class_id"));
+    const classId = parseUuid(url.searchParams.get("class_id"));
     const teacherId = url.searchParams.get("teacher_id");
-    if (!Number.isSafeInteger(classId) || classId < 1 || !teacherId || teacherId.length > 40) {
+    if (!classId || !teacherId || teacherId.length > 40) {
       return jsonError("Provide a valid class ID and teacher ID.", 400);
     }
     const result = await getPool().query(

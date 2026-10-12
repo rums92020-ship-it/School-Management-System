@@ -4,7 +4,7 @@ import { getPool } from "../../../../lib/db";
 import {
   databaseUnavailableResponse,
   jsonError,
-  parsePositiveId,
+  parseUuid,
   termManagerRoles,
   validDate,
 } from "../../../../lib/timetable";
@@ -12,12 +12,13 @@ import {
 export const runtime = "nodejs";
 
 const dimensions = {
-  session: ["sessions.session_id", "sessions.session_id", "sessions.session_date::text"],
-  class: ["classes.class_id", "classes.class_id", "classes.name"],
-  shift: ["shifts.id", "shifts.id", "shifts.name"],
-  subject: ["subjects.subject_id", "subjects.subject_id", "subjects.name"],
-  teacher: ["teachers.teacher_id", "teachers.teacher_id", "teachers.name"],
+  session: ["sessions.id", "sessions.id", "sessions.session_date::text"],
+  class: ["classes.id", "classes.id", "classes.name"],
+  shift: ["shifts.id", "shifts.id", "shifts.code"],
+  subject: ["COALESCE(sessions.subject_id, slots.subject_id)", "COALESCE(sessions.subject_id, slots.subject_id)", "subjects.name"],
+  teacher: ["COALESCE(sessions.teacher_id, slots.teacher_id)", "COALESCE(sessions.teacher_id, slots.teacher_id)", "teachers.name"],
 };
+const filterNames = ["term_id", "shift_id", "class_id", "subject_id", "session_id"];
 
 export async function GET(request) {
   try {
@@ -29,11 +30,11 @@ export async function GET(request) {
       return jsonError("group_by must be one of session, class, shift, subject, or teacher.", 400);
     }
     const filters = {};
-    for (const name of ["term_id", "shift_id", "class_id", "subject_id", "session_id"]) {
+    for (const name of filterNames) {
       const raw = url.searchParams.get(name);
       if (raw !== null) {
-        filters[name] = parsePositiveId(raw);
-        if (!filters[name]) return jsonError(`${name} must be a positive integer.`, 400);
+        filters[name] = parseUuid(raw);
+        if (!filters[name]) return jsonError(`${name} must be a valid UUID.`, 400);
       }
     }
     const startDate = url.searchParams.get("start_date");
@@ -49,11 +50,11 @@ export async function GET(request) {
       values.push(value);
       conditions.push(condition.replace("?", `$${values.length}`));
     };
-    if (filters.term_id) addFilter("sessions.term_id = ?::bigint", filters.term_id);
-    if (filters.shift_id) addFilter("classes.shift_id = ?::bigint", filters.shift_id);
-    if (filters.class_id) addFilter("sessions.class_id = ?::bigint", filters.class_id);
-    if (filters.subject_id) addFilter("slots.subject_id = ?::bigint", filters.subject_id);
-    if (filters.session_id) addFilter("sessions.session_id = ?::bigint", filters.session_id);
+    if (filters.term_id) addFilter("sessions.term_id = ?::uuid", filters.term_id);
+    if (filters.shift_id) addFilter("classes.shift_id = ?::uuid", filters.shift_id);
+    if (filters.class_id) addFilter("sessions.class_id = ?::uuid", filters.class_id);
+    if (filters.subject_id) addFilter("COALESCE(sessions.subject_id, slots.subject_id) = ?::uuid", filters.subject_id);
+    if (filters.session_id) addFilter("sessions.id = ?::uuid", filters.session_id);
     if (startDate) addFilter("sessions.session_date >= ?::date", startDate);
     if (endDate) addFilter("sessions.session_date <= ?::date", endDate);
 
@@ -64,8 +65,7 @@ export async function GET(request) {
         WHERE class_teachers.class_id = sessions.class_id
           AND class_teachers.teacher_id = $${values.length})`);
       if (groupBy === "teacher") {
-        values.push(user.teacher_id);
-        conditions.push(`slots.teacher_id = $${values.length}`);
+        conditions.push(`COALESCE(sessions.teacher_id, slots.teacher_id) = $${values.length}`);
       }
     } else if (user.role === "student") {
       if (!user.student_id) return jsonError("Student account is not linked to a student record.", 403);
@@ -88,30 +88,25 @@ export async function GET(request) {
     const [groupId, groupKey, groupName] = dimensions[groupBy];
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const result = await getPool().query(
-      `SELECT ${groupId} AS group_id,
-        ${groupKey} AS group_key,
-        ${groupName} AS group_name,
-        COUNT(DISTINCT sessions.session_id)::int AS sessions,
+      `SELECT ${groupId} AS group_id, ${groupKey} AS group_key, ${groupName} AS group_name,
+        COUNT(DISTINCT sessions.id)::int AS sessions,
         COUNT(*) FILTER (WHERE session_attendance.status = 'present')::int AS present,
         COUNT(*) FILTER (WHERE session_attendance.status = 'absent')::int AS absent,
         COUNT(*) FILTER (WHERE session_attendance.status = 'late')::int AS late,
         COUNT(*) FILTER (WHERE session_attendance.status = 'excused')::int AS excused,
         COUNT(class_students.student_id)::int AS roster_records,
-        COALESCE(
-          ROUND(100.0 * COUNT(*) FILTER (
-            WHERE session_attendance.status IN ('present', 'late')
-          ) / NULLIF(COUNT(class_students.student_id), 0), 2),
-          0
-        ) AS attendance_percentage
+        COALESCE(ROUND(100.0 * COUNT(*) FILTER (
+          WHERE session_attendance.status IN ('present', 'late')
+        ) / NULLIF(COUNT(class_students.student_id), 0), 2), 0) AS attendance_percentage
        FROM class_sessions AS sessions
-       JOIN timetable_slots AS slots ON slots.slot_id = sessions.slot_id
-       JOIN classes ON classes.class_id = sessions.class_id
+       LEFT JOIN timetable_slots AS slots ON slots.id = sessions.slot_id
+       JOIN classes ON classes.id = sessions.class_id
        JOIN shifts ON shifts.id = classes.shift_id
-       JOIN subjects ON subjects.subject_id = slots.subject_id
-       JOIN teachers ON teachers.teacher_id = slots.teacher_id
+       LEFT JOIN subjects ON subjects.id = COALESCE(sessions.subject_id, slots.subject_id)
+       LEFT JOIN teachers ON teachers.teacher_id = COALESCE(sessions.teacher_id, slots.teacher_id)
        JOIN class_students ON class_students.class_id = sessions.class_id
        LEFT JOIN session_attendance
-         ON session_attendance.session_id = sessions.session_id
+         ON session_attendance.session_id = sessions.id
         AND session_attendance.student_id = class_students.student_id
        ${where}
        GROUP BY ${groupId}, ${groupKey}, ${groupName}

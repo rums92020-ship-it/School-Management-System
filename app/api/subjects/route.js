@@ -5,7 +5,7 @@ import {
   databaseUnavailableResponse,
   jsonError,
   managementRoles,
-  parsePositiveId,
+  parseUuid,
 } from "../../../lib/timetable";
 
 export const runtime = "nodejs";
@@ -16,10 +16,10 @@ export async function GET() {
     if (response) return response;
     const result = ["dept_head", "dept_deputy"].includes(user.role) && user.department
       ? await getPool().query(
-        "SELECT subject_id, name, department, is_active FROM subjects WHERE department = $1 OR department IS NULL ORDER BY name",
+        "SELECT id AS subject_id, name, department, is_active FROM subjects WHERE department = $1 OR department IS NULL ORDER BY name",
         [user.department],
       )
-      : await getPool().query("SELECT subject_id, name, department, is_active FROM subjects ORDER BY name");
+      : await getPool().query("SELECT id AS subject_id, name, department, is_active FROM subjects ORDER BY name");
     return NextResponse.json({ subjects: result.rows });
   } catch (error) {
     return databaseUnavailableResponse(error, "Could not load subjects.");
@@ -33,13 +33,17 @@ export async function POST(request) {
     const body = await request.json();
     if (!body || typeof body !== "object" || Array.isArray(body) ||
         typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 120 ||
+        (body.code !== undefined && body.code !== null &&
+          (typeof body.code !== "string" || body.code.trim().length > 30)) ||
         (body.department !== undefined && body.department !== null &&
           (typeof body.department !== "string" || body.department.length > 100))) {
       return jsonError("Provide a valid subject name and optional department.", 400);
     }
     const result = await getPool().query(
-      "INSERT INTO subjects (name, department) VALUES ($1, $2) RETURNING subject_id, name, department, is_active",
-      [body.name.trim(), body.department?.trim() || null],
+      `INSERT INTO subjects (name, code, department)
+       VALUES ($1, $2, $3)
+       RETURNING id AS subject_id, name, code, department, is_active`,
+      [body.name.trim(), body.code?.trim() || null, body.department?.trim() || null],
     );
     return NextResponse.json({ subject: result.rows[0] }, { status: 201 });
   } catch (error) {
@@ -54,19 +58,21 @@ export async function PATCH(request) {
     const { response } = await requireRole(managementRoles);
     if (response) return response;
     const body = await request.json();
-    const id = parsePositiveId(body?.subject_id);
+    const id = parseUuid(body?.subject_id);
     if (!id || typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 120 ||
+        (body.code !== undefined && body.code !== null &&
+          (typeof body.code !== "string" || body.code.trim().length > 30)) ||
         (body.department !== undefined && body.department !== null &&
           (typeof body.department !== "string" || body.department.length > 100)) ||
         (body.is_active !== undefined && typeof body.is_active !== "boolean")) {
       return jsonError("Provide a valid subject ID, name, department, and status.", 400);
     }
     const result = await getPool().query(
-      `UPDATE subjects SET name = $1, department = $2,
-        is_active = COALESCE($3, is_active)
-       WHERE subject_id = $4
-       RETURNING subject_id, name, department, is_active`,
-      [body.name.trim(), body.department?.trim() || null, body.is_active ?? null, id],
+      `UPDATE subjects SET name = $1, code = $2, department = $3,
+        is_active = COALESCE($4, is_active)
+       WHERE id = $5
+       RETURNING id AS subject_id, name, code, department, is_active`,
+      [body.name.trim(), body.code?.trim() || null, body.department?.trim() || null, body.is_active ?? null, id],
     );
     if (!result.rowCount) return jsonError("Subject not found.", 404);
     return NextResponse.json({ subject: result.rows[0] });
@@ -81,9 +87,9 @@ export async function DELETE(request) {
   try {
     const { response } = await requireRole(["director", "deputy_director"]);
     if (response) return response;
-    const id = parsePositiveId(new URL(request.url).searchParams.get("id"));
+    const id = parseUuid(new URL(request.url).searchParams.get("id"));
     if (!id) return jsonError("Provide a valid subject ID.", 400);
-    const result = await getPool().query("DELETE FROM subjects WHERE subject_id = $1 RETURNING subject_id", [id]);
+    const result = await getPool().query("DELETE FROM subjects WHERE id = $1 RETURNING id", [id]);
     if (!result.rowCount) return jsonError("Subject not found.", 404);
     return NextResponse.json({ ok: true });
   } catch (error) {

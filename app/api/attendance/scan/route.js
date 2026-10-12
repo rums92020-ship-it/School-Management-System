@@ -7,7 +7,8 @@ import {
   databaseUnavailableResponse,
   jsonError,
   managementRoles,
-  parsePositiveId,
+  parseUuid,
+  sessionTimezone,
 } from "../../../../lib/timetable";
 
 export const runtime = "nodejs";
@@ -19,8 +20,9 @@ function readStudentId(body) {
   if (typeof body.qr_payload !== "string" || body.qr_payload.length > 4096) return "";
   try {
     const payload = JSON.parse(body.qr_payload);
-    return payload?.type === "attendance" && typeof payload.id === "string"
-      ? payload.id.trim()
+    return payload?.type === "attendance" &&
+      (typeof payload.token === "string" || typeof payload.id === "string")
+      ? (payload.token || payload.id).trim()
       : "";
   } catch {
     return "";
@@ -32,9 +34,9 @@ export async function POST(request) {
     const { user, response } = await requireRole(scannerRoles);
     if (response) return response;
     const body = await request.json();
-    const sessionId = parsePositiveId(String(body?.session_id ?? ""));
+    const sessionId = parseUuid(body?.session_id);
     const studentId = body && typeof body === "object" ? readStudentId(body) : "";
-    if (!sessionId || !studentId || studentId.length > 40) {
+    if (!sessionId || !studentId || studentId.length > 256) {
       return jsonError("Provide a valid session_id and student QR payload.", 400);
     }
 
@@ -50,10 +52,21 @@ export async function POST(request) {
         await client.query("ROLLBACK");
         return jsonError("You do not have permission to scan attendance for this class.", 403);
       }
+      const matchedStudent = await client.query(
+        `SELECT students.student_id
+         FROM students
+         WHERE students.student_id = $1 OR students.qr_token = $1
+         LIMIT 1`,
+        [studentId],
+      );
+      const resolvedStudentId = matchedStudent.rows[0]?.student_id;
+      if (!resolvedStudentId) {
+        await client.query("ROLLBACK");
+        return jsonError("Student QR token or ID was not found.", 404);
+      }
       const enrolled = await client.query(
-        `SELECT 1 FROM class_students
-         WHERE class_id = $1 AND student_id = $2`,
-        [session.class_id, studentId],
+        "SELECT 1 FROM class_students WHERE class_id = $1 AND student_id = $2",
+        [session.class_id, resolvedStudentId],
       );
       if (!enrolled.rowCount) {
         await client.query("ROLLBACK");
@@ -62,7 +75,7 @@ export async function POST(request) {
 
       const existing = await client.query(
         "SELECT status FROM session_attendance WHERE session_id = $1 AND student_id = $2",
-        [sessionId, studentId],
+        [sessionId, resolvedStudentId],
       );
       if (existing.rowCount) {
         await client.query("COMMIT");
@@ -70,12 +83,19 @@ export async function POST(request) {
       }
 
       const timing = await client.query(
-        `SELECT NOW() >= starts_at - INTERVAL '15 minutes'
-           AND NOW() <= ends_at AS within_window,
-        NOW() <= starts_at + ($2::int * INTERVAL '1 minute') AS present_on_time
-         FROM class_sessions WHERE session_id = $1`,
-        [sessionId, attendanceGraceMinutes],
+        `SELECT NOW() >= ((session_date::text || ' ' || start_time::text)::timestamp AT TIME ZONE $3)
+              - INTERVAL '15 minutes'
+           AND NOW() <= ((session_date::text || ' ' || end_time::text)::timestamp AT TIME ZONE $3) AS within_window,
+        NOW() <= ((session_date::text || ' ' || start_time::text)::timestamp AT TIME ZONE $3)
+              + ($2::int * INTERVAL '1 minute') AS present_on_time,
+        status
+         FROM class_sessions WHERE id = $1`,
+        [sessionId, attendanceGraceMinutes, sessionTimezone],
       );
+      if (timing.rows[0].status === "closed" || timing.rows[0].status === "cancelled") {
+        await client.query("ROLLBACK");
+        return jsonError("Attendance is closed for this session.", 409);
+      }
       if (!timing.rows[0].within_window) {
         await client.query("ROLLBACK");
         return jsonError("Scanning is allowed only from 15 minutes before the session until it ends.", 409);
@@ -88,12 +108,12 @@ export async function POST(request) {
          VALUES ($1, $2, $3, 'qr', NOW(), $4)
          ON CONFLICT (session_id, student_id) DO NOTHING
          RETURNING status`,
-        [sessionId, studentId, status, user.id],
+        [sessionId, resolvedStudentId, status, user.id],
       );
       if (!result.rowCount) {
         const saved = await client.query(
           "SELECT status FROM session_attendance WHERE session_id = $1 AND student_id = $2",
-          [sessionId, studentId],
+          [sessionId, resolvedStudentId],
         );
         await client.query("COMMIT");
         return NextResponse.json({ already: true, status: saved.rows[0]?.status });

@@ -6,7 +6,8 @@ import {
   databaseUnavailableResponse,
   jsonError,
   managementRoles,
-  parsePositiveId,
+  parseUuid,
+  sessionTimezone,
 } from "../../../../lib/timetable";
 
 export const runtime = "nodejs";
@@ -18,7 +19,7 @@ export async function POST(request) {
     const { user, response } = await requireRole(closerRoles);
     if (response) return response;
     const body = await request.json();
-    const sessionId = parsePositiveId(String(body?.session_id ?? ""));
+    const sessionId = parseUuid(body?.session_id);
     if (!sessionId) return jsonError("Provide a valid session_id.", 400);
 
     const client = await getPool().connect();
@@ -34,10 +35,17 @@ export async function POST(request) {
         return jsonError("You do not have permission to close attendance for this class.", 403);
       }
 
+      await client.query("SELECT id FROM class_sessions WHERE id = $1 FOR UPDATE", [sessionId]);
       const ended = await client.query(
-        "SELECT NOW() >= ends_at AS has_ended FROM class_sessions WHERE session_id = $1",
-        [sessionId],
+        `SELECT NOW() >= ((session_date::text || ' ' || end_time::text)::timestamp
+          AT TIME ZONE $2) AS has_ended, status
+         FROM class_sessions WHERE id = $1`,
+        [sessionId, sessionTimezone],
       );
+      if (ended.rows[0].status === "cancelled") {
+        await client.query("ROLLBACK");
+        return jsonError("A cancelled session cannot be closed for attendance.", 409);
+      }
       if (!ended.rows[0].has_ended) {
         await client.query("ROLLBACK");
         return jsonError("A session can be closed only after its scheduled end.", 409);
@@ -49,10 +57,14 @@ export async function POST(request) {
          SELECT $1, class_students.student_id, 'absent', 'auto', $2
          FROM class_sessions
          JOIN class_students ON class_students.class_id = class_sessions.class_id
-         WHERE class_sessions.session_id = $1
+         WHERE class_sessions.id = $1
          ON CONFLICT (session_id, student_id) DO NOTHING
          RETURNING student_id`,
         [sessionId, user.id],
+      );
+      await client.query(
+        "UPDATE class_sessions SET status = 'closed' WHERE id = $1",
+        [sessionId],
       );
       const total = await client.query(
         "SELECT COUNT(*)::int AS count FROM class_students WHERE class_id = $1",
