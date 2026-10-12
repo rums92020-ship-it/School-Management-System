@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { sessionCookieName, verifySessionToken } from "../../../lib/auth";
+import { requireRole } from "../../../lib/auth";
 import { getPool } from "../../../lib/db";
 
 export const runtime = "nodejs";
@@ -47,12 +46,19 @@ function normalizeStudent(value) {
 
 export async function POST(request) {
   try {
-    const cookieStore = await cookies();
-    if (!verifySessionToken(cookieStore.get(sessionCookieName)?.value)) {
-      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    }
+    const { response } = await requireRole([
+      "director",
+      "deputy_director",
+      "office_head",
+      "office_deputy",
+      "office_staff",
+    ]);
+    if (response) return response;
 
     const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid student request body." }, { status: 400 });
+    }
     const students = Array.isArray(body.students) ? body.students : [body];
     if (!students.length || students.length > 1000) {
       return NextResponse.json({ error: "Submit between 1 and 1000 students per request." }, { status: 400 });
@@ -96,8 +102,8 @@ export async function POST(request) {
 
     return NextResponse.json({ saved: normalized.length }, { status: 201 });
   } catch (error) {
-    if (error instanceof SyntaxError || error.message.startsWith("Student ") || error.message.startsWith("Each student")) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof SyntaxError || error.message?.startsWith("Student ") || error.message?.startsWith("Each student")) {
+      return NextResponse.json({ error: error.message || "Invalid JSON request body." }, { status: 400 });
     }
     console.error("Could not save student records to PostgreSQL.", error);
     return NextResponse.json({ error: "Could not save student records." }, { status: 503 });

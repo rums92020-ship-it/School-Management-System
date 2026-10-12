@@ -1,19 +1,19 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { sessionCookieName, verifySessionToken } from "../../../lib/auth";
+import { requireRole } from "../../../lib/auth";
 import { getPool } from "../../../lib/db";
 
 export const runtime = "nodejs";
 
-async function isAuthenticated() {
-  const cookieStore = await cookies();
-  return Boolean(verifySessionToken(cookieStore.get(sessionCookieName)?.value));
-}
+const managers = ["director", "deputy_director", "office_head", "office_deputy"];
 
 export async function POST(request) {
   try {
-    if (!await isAuthenticated()) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    const { response } = await requireRole(managers);
+    if (response) return response;
     const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid study level request body." }, { status: 400 });
+    }
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name || name.length > 80) return NextResponse.json({ error: "Study level name must be 1–80 characters." }, { status: 400 });
     await getPool().query("INSERT INTO study_levels (name) VALUES ($1)", [name]);
@@ -26,14 +26,11 @@ export async function POST(request) {
   }
 }
 
-export async function DELETE(request) {
+export async function DELETE() {
   try {
-    if (!await isAuthenticated()) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    const name = new URL(request.url).searchParams.get("name")?.trim();
-    if (!name) return NextResponse.json({ error: "A study level name is required." }, { status: 400 });
-    const result = await getPool().query("DELETE FROM study_levels WHERE name = $1", [name]);
-    if (!result.rowCount) return NextResponse.json({ error: "Study level not found." }, { status: 404 });
-    return NextResponse.json({ ok: true });
+    const { response } = await requireRole(managers);
+    if (response) return response;
+    return NextResponse.json({ error: "Deleting study levels is not permitted." }, { status: 403 });
   } catch (error) {
     console.error("Could not delete study level from PostgreSQL.", error);
     return NextResponse.json({ error: "Could not delete study level." }, { status: 503 });

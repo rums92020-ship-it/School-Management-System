@@ -10,11 +10,36 @@
       { name: "Community", icon: "♧", items: ["Parent List", "Announcements", "Messages", "School Events"] },
       { name: "Library", icon: "▣", items: ["Books", "Borrow Books", "Return Books", "Library Reports"] },
       { name: "Reports & settings", icon: "⚙", items: ["Student Reports", "Academic Reports", "User Management", "School Information"] },
-      { name: "Telegram Integration", icon: "➤", items: ["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"] }
+      { name: "Telegram Integration", icon: "➤", items: ["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"] },
+      { name: "Account", icon: "♙", items: ["My Account"] }
     ];
+    const rolePages = {
+      director: ["Overview", "Attendance Statistics", "Recent Activities", "Student List", "Add Students", "Student Enrollment", "Import from Excel", "Student Documents", "Teacher List", "Assign Subject", "Teacher Schedule", "Classes", "Study Levels", "Sections", "Student Assignment", "Subject List", "Class Timetable", "Exam Schedule", "Student Results", "Take Attendance", "QR Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports", "School Fees", "Student Payments", "Invoices", "Expenses", "Financial Reports", "Parent List", "Announcements", "Messages", "School Events", "Books", "Borrow Books", "Return Books", "Library Reports", "Student Reports", "Academic Reports", "User Management", "School Information", "Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log", "My Account"],
+      deputy_director: ["Overview", "Attendance Statistics", "Recent Activities", "Student List", "Add Students", "Student Enrollment", "Import from Excel", "Student Documents", "Teacher List", "Assign Subject", "Teacher Schedule", "Classes", "Study Levels", "Sections", "Student Assignment", "Subject List", "Class Timetable", "Exam Schedule", "Student Results", "Take Attendance", "QR Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports", "School Fees", "Student Payments", "Invoices", "Expenses", "Financial Reports", "Parent List", "Announcements", "Messages", "School Events", "Books", "Borrow Books", "Return Books", "Library Reports", "Student Reports", "Academic Reports", "User Management", "School Information", "Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log", "My Account"],
+      office_head: ["Overview", "Student List", "Add Students", "Student Enrollment", "Import from Excel", "Teacher List", "Study Levels", "Daily Attendance", "Monthly Attendance", "Attendance Reports", "My Account"],
+      office_deputy: ["Overview", "Student List", "Add Students", "Student Enrollment", "Import from Excel", "Teacher List", "Study Levels", "Daily Attendance", "Monthly Attendance", "Attendance Reports", "My Account"],
+      office_staff: ["Overview", "Student List", "Add Students", "Student Enrollment", "Import from Excel", "Teacher List", "Daily Attendance", "Monthly Attendance", "Attendance Reports", "My Account"],
+      dept_head: ["Overview", "Student List", "Teacher List", "Take Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports", "My Account"],
+      dept_deputy: ["Overview", "Student List", "Teacher List", "Take Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports", "My Account"],
+      teacher: ["Overview", "Student List", "Take Attendance", "Daily Attendance", "Student Results", "My Account"],
+      student: ["Overview", "Student List", "Monthly Attendance", "Student Results", "My Account"],
+      guardian: ["Overview", "Student List", "Monthly Attendance", "Student Results", "My Account"]
+    };
+    const roleNames = {
+      director: { en: "Director", km: "នាយកវិទ្យាស្ថាន" },
+      deputy_director: { en: "Deputy Director", km: "នាយករងវិទ្យាស្ថាន" },
+      office_head: { en: "Office Head", km: "ប្រធានការិយាល័យ" },
+      office_deputy: { en: "Office Deputy", km: "អនុប្រធានការិយាល័យ" },
+      office_staff: { en: "Office Staff", km: "មន្ត្រីការិយាល័យ" },
+      dept_head: { en: "Department Head", km: "ប្រធានដេប៉ាតឺម៉ង់" },
+      dept_deputy: { en: "Department Deputy", km: "អនុប្រធានដេប៉ាតឺម៉ង់" },
+      teacher: { en: "Teacher", km: "គ្រូបង្រៀន" },
+      student: { en: "Student", km: "សិស្ស/និស្សិត" },
+      guardian: { en: "Guardian", km: "អាណាព្យាបាល" }
+    };
     let studyLevels = [];
     const studentMajors = [
-      "សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ខាន",
+      "សេវាកម្មបរិក្ខារត្រជាក់ក្នុងគេហដ្ឋាន",
       "ការថែទាំ និងជួសជុលរថយន្ត",
       "មេកានិកឧស្សាហកម្ម",
       "ការដំឡើង និងជួសជុលរថយន្ត",
@@ -180,6 +205,35 @@
       return text ? (text[currentLanguage] || text.en) : key;
     }
 
+    function hasPagePermission(page) {
+      return Boolean(currentUser && rolePages[currentUser.role]?.includes(page));
+    }
+
+    function canCreateStudents() {
+      return ["director", "deputy_director", "office_head", "office_deputy", "office_staff"].includes(currentUser?.role);
+    }
+
+    function canCreateTeachers() {
+      return ["director", "deputy_director", "office_head", "office_deputy"].includes(currentUser?.role);
+    }
+
+    function canManageStudyLevels() {
+      return ["director", "deputy_director", "office_head", "office_deputy"].includes(currentUser?.role);
+    }
+
+    function roleLabel(role) {
+      const names = roleNames[role];
+      return names ? names[currentLanguage] : role || "";
+    }
+
+    function khmerRoleLabel(role) {
+      return roleNames[role]?.km || role || "";
+    }
+
+    function uiLabel(english, khmer) {
+      return currentLanguage === "km" ? khmer : english;
+    }
+
     function updateUserProfile() {
       const profileName = document.querySelector(".profile-copy strong");
       const profileRole = document.querySelector(".profile-copy small");
@@ -190,22 +244,24 @@
       if (!profileName || !profileRole || !avatar || !logoutButton || !loginScreen || !appShell) return;
 
       if (!currentUser) {
-        profileName.textContent = "Administrator";
-        profileRole.textContent = "School Administrator";
+        profileName.textContent = "School Portal";
+        profileRole.textContent = "";
         avatar.textContent = "SA";
         logoutButton.style.display = "none";
         appShell.classList.add("hidden");
         loginScreen.classList.remove("hidden");
+        buildNavigation();
         return;
       }
 
       const initials = currentUser.name.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
       profileName.textContent = currentUser.name;
-      profileRole.textContent = currentUser.role || "School Administrator";
+      profileRole.textContent = khmerRoleLabel(currentUser.role);
       avatar.textContent = initials || "SR";
       logoutButton.style.display = "inline-grid";
       appShell.classList.remove("hidden");
       loginScreen.classList.add("hidden");
+      buildNavigation();
     }
 
     async function handleLogin(event) {
@@ -271,6 +327,10 @@
       }
       nav.innerHTML = "";
       buildNavigation();
+      if (currentUser) {
+        const profileRole = document.querySelector(".profile-copy small");
+        if (profileRole) profileRole.textContent = khmerRoleLabel(currentUser.role);
+      }
       if (currentPage === "Overview") dashboard();
       else if (currentPage === "Study Levels") renderStudyLevels();
       else if (currentPage === "QR Attendance") renderQrAttendance();
@@ -290,6 +350,8 @@
       else if (currentPage === "Student Payments") renderModule("Student Payments");
       else if (currentPage === "Exam Schedule") renderModule("Exam Schedule");
       else if (currentPage === "Announcements") renderModule("Announcements");
+      else if (currentPage === "User Management") renderUsers();
+      else if (currentPage === "My Account") renderMyAccount();
     }
 
     function escapeHTML(value) {
@@ -388,7 +450,11 @@
     }
 
     function buildNavigation() {
+      nav.innerHTML = "";
+      if (!currentUser) return;
       groups.forEach((group, index) => {
+        const items = group.items.filter(item => hasPagePermission(item));
+        if (!items.length) return;
         const section = document.createElement("div");
         if (index === 1 || index === 4 || index === 7) {
           const label = document.createElement("div");
@@ -403,7 +469,7 @@
         button.setAttribute("aria-expanded", "false");
         const submenu = document.createElement("div");
         submenu.className = "subnav";
-        group.items.forEach(item => {
+        items.forEach(item => {
           const link = document.createElement("button");
           link.type = "button";
           link.dataset.page = item;
@@ -436,6 +502,8 @@
     }
 
     function dashboard() {
+      const canAddStudents = canCreateStudents();
+      const canTakeAttendance = ["director", "deputy_director", "dept_head", "dept_deputy", "teacher"].includes(currentUser?.role);
       const attendancePercent = students.length
         ? `${Math.round(attendanceTodaySummary.present / students.length * 100)}%`
         : "—";
@@ -457,7 +525,7 @@
       const greeting = currentUser
         ? `${t("dashboard.greeting")}, ${currentUser.name} 👋`
         : `${t("dashboard.greeting")} 👋`;
-      content.innerHTML = pageHeader(greeting, t("dashboard.subtitle"), `<button class="btn" data-action="add-student">${t("add.student")}</button>`) +
+      content.innerHTML = pageHeader(greeting, t("dashboard.subtitle"), canAddStudents ? `<button class="btn" data-action="add-student">${t("add.student")}</button>` : "") +
         `<div class="cards">${statMarkup}</div>
         <div class="dashboard-grid">
           <section class="panel">
@@ -477,9 +545,9 @@
           <section class="panel">
             <div class="panel-head"><div><h2>${t("quick.actions")}</h2><p>${t("quick.actions.subtitle")}</p></div></div>
             <div class="quick-actions">
-              <button class="quick-action" data-action="take-attendance"><span class="quick-icon">◷</span><span><strong>${t("take.attendance")}</strong><small>${t("take.attendance.subtitle")}</small></span></button>
-              <button class="quick-action" data-action="add-student"><span class="quick-icon">＋</span><span><strong>${t("enroll.student")}</strong><small>${t("enroll.student.subtitle")}</small></span></button>
-              <button class="quick-action" data-page="Student Results"><span class="quick-icon">▤</span><span><strong>${t("view.student.results")}</strong><small>${t("view.student.results.subtitle")}</small></span></button>
+              ${canTakeAttendance ? `<button class="quick-action" data-action="take-attendance"><span class="quick-icon">◷</span><span><strong>${t("take.attendance")}</strong><small>${t("take.attendance.subtitle")}</small></span></button>` : ""}
+              ${canAddStudents ? `<button class="quick-action" data-action="add-student"><span class="quick-icon">＋</span><span><strong>${t("enroll.student")}</strong><small>${t("enroll.student.subtitle")}</small></span></button>` : ""}
+              ${hasPagePermission("Student Results") ? `<button class="quick-action" data-page="Student Results"><span class="quick-icon">▤</span><span><strong>${t("view.student.results")}</strong><small>${t("view.student.results.subtitle")}</small></span></button>` : ""}
             </div>
           </section>
         </div>`;
@@ -509,9 +577,15 @@
       }).join("");
       const emptyMessage = students.length
         ? "No students match your search."
-        : "No students enrolled yet. Add a student or import a spreadsheet.";
-      content.innerHTML = pageHeader(t("student.directory.title"), t("student.directory.subtitle"), `<button class="btn" data-action="add-student">${t("add.student")}</button>`) +
-        `<section class="panel"><div class="list-toolbar"><input id="table-search" class="list-search" type="search" placeholder="${t("filter.students")}" value="${escapeHTML(query)}" aria-label="Filter student list"><div class="toolbar-actions"><button class="btn secondary" data-page="Import from Excel">${t("import.file")}</button><button class="btn secondary" data-action="export-students">${t("export.csv")}</button></div></div><div class="telegram-notice" style="margin-bottom:14px"><strong>Personal data:</strong> Student records are stored in the configured PostgreSQL database and are available to authorized administrators.</div><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("field.name.khmer")}</th><th>${t("field.name.english")}</th><th>${t("student.gender")}</th><th>${t("student.class")}</th><th>ជំនាញ</th><th>វេនសិក្សា</th><th>ក្រុម</th><th>និទ្ទេស</th><th>${t("student.dob")}</th><th>${t("student.birthplace")}</th><th>${t("student.personal.number")}</th><th>${t("student.parent.number")}</th><th>${t("status")}</th></tr></thead><tbody id="student-rows">${rows || `<tr><td colspan="14"><div class="empty">${emptyMessage}</div></td></tr>`}</tbody></table></div><div class="page-subtitle" style="margin-top:14px">Showing ${filtered.length} of ${students.length} students</div></section>`;
+        : canCreateStudents() ? "No students enrolled yet. Add a student or import a spreadsheet." : "No student records are available for this account.";
+      const addButton = canCreateStudents() ? `<button class="btn" data-action="add-student">${t("add.student")}</button>` : "";
+      const toolbarButtons = [
+        canCreateStudents() ? `<button class="btn secondary" data-page="Import from Excel">${t("import.file")}</button>` : "",
+        ["director", "deputy_director", "office_head", "office_deputy", "office_staff"].includes(currentUser?.role)
+          ? `<button class="btn secondary" data-action="export-students">${t("export.csv")}</button>` : ""
+      ].filter(Boolean).join("");
+      content.innerHTML = pageHeader(t("student.directory.title"), t("student.directory.subtitle"), addButton) +
+        `<section class="panel"><div class="list-toolbar"><input id="table-search" class="list-search" type="search" placeholder="${t("filter.students")}" value="${escapeHTML(query)}" aria-label="Filter student list"><div class="toolbar-actions">${toolbarButtons}</div></div><div class="telegram-notice" style="margin-bottom:14px"><strong>Personal data:</strong> Only records permitted for your account are shown.</div><div class="table-wrap"><table class="table"><thead><tr><th>${t("student.id")}</th><th>${t("field.name.khmer")}</th><th>${t("field.name.english")}</th><th>${t("student.gender")}</th><th>${t("student.class")}</th><th>ជំនាញ</th><th>វេនសិក្សា</th><th>ក្រុម</th><th>និទ្ទេស</th><th>${t("student.dob")}</th><th>${t("student.birthplace")}</th><th>${t("student.personal.number")}</th><th>${t("student.parent.number")}</th><th>${t("status")}</th></tr></thead><tbody id="student-rows">${rows || `<tr><td colspan="14"><div class="empty">${emptyMessage}</div></td></tr>`}</tbody></table></div><div class="page-subtitle" style="margin-top:14px">Showing ${filtered.length} of ${students.length} students</div></section>`;
       const filter = document.getElementById("table-search");
       filter.addEventListener("input", () => renderStudents(filter.value));
       filter.focus({ preventScroll: true });
@@ -529,7 +603,7 @@
       }
 
       const rows = teachers.map(teacher => `<tr><td>${escapeHTML(teacher.id)}</td><td>${escapeHTML(teacher.nameKhmer || "—")}</td><td>${escapeHTML(teacher.nameEnglish || teacher.name || "—")}</td><td>${escapeHTML(teacher.subject)}</td><td>${escapeHTML(teacher.className)}</td><td>${escapeHTML(teacher.phone || "—")}</td><td><span class="badge active">${t("status.active")}</span></td></tr>`).join("");
-      content.innerHTML = pageHeader(t("teacher.directory.title"), t("teacher.directory.subtitle"), `<button class="btn" data-action="add-teacher">${t("add.teacher")}</button>`) +
+      content.innerHTML = pageHeader(t("teacher.directory.title"), t("teacher.directory.subtitle"), canCreateTeachers() ? `<button class="btn" data-action="add-teacher">${t("add.teacher")}</button>` : "") +
         `<section class="panel"><div class="table-wrap"><table class="table"><thead><tr><th>Teacher ID</th><th>Name (Khmer)</th><th>Name (English)</th><th>Subject</th><th>${t("student.class")}</th><th>Phone</th><th>${t("status")}</th></tr></thead><tbody>${rows || `<tr><td colspan="7"><div class="empty">No teachers added yet.</div></td></tr>`}</tbody></table></div></section>`;
     }
 
@@ -790,17 +864,18 @@
 
     function renderAttendance(selectedClass = "All levels") {
       const date = localDateValue();
+      const canEditAttendance = ["director", "deputy_director", "dept_head", "dept_deputy", "teacher"].includes(currentUser?.role);
       const rows = students.map(student => {
         const selected = attendanceRecords.get(`${date}|${student.id}`) || "Present";
         const choices = ["Present", "Absent", "Late"].map(value =>
-          `<label><input type="radio" name="attendance-${escapeHTML(student.id)}" value="${value}" ${selected === value ? "checked" : ""}> ${value}</label>`
+          `<label><input type="radio" name="attendance-${escapeHTML(student.id)}" value="${value}" ${selected === value ? "checked" : ""} ${canEditAttendance ? "" : "disabled"}> ${value}</label>`
         ).join("");
         const englishName = student.nameEnglish || student.name || student.nameKhmer || "";
         const initials = englishName.split(/\s+/).map(part => part[0]).slice(0, 2).join("").toUpperCase();
         return `<tr data-student-id="${escapeHTML(student.id)}" data-class="${escapeHTML(student.className)}"><td><div class="student-cell"><span class="student-avatar">${escapeHTML(initials)}</span><span class="student-names"><strong>${escapeHTML(englishName)}</strong>${student.nameKhmer ? `<small>${escapeHTML(student.nameKhmer)}</small>` : ""}</span></div></td><td>${escapeHTML(student.className)}</td><td><div class="attendance-choice">${choices}</div></td></tr>`;
       }).join("") || `<tr><td colspan="3"><div class="empty">No students available to take attendance.</div></td></tr>`;
       content.innerHTML = pageHeader(t("attendance.title"), t("attendance.subtitle")) +
-        `<div class="notice">◷ &nbsp; Attendance is recorded for the selected date and study level.</div><section class="panel"><div class="attendance-controls"><div class="field"><label for="attendance-date">Date</label><input id="attendance-date" type="date" value="${date}"></div><div class="field"><label for="attendance-class">Study level</label><select id="attendance-class"><option>All levels</option>${studyLevels.map(level => `<option>${escapeHTML(level)}</option>`).join("")}</select></div><button class="btn" data-action="save-attendance">Save attendance</button></div><div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Study level</th><th>Attendance</th></tr></thead><tbody id="attendance-rows">${rows}</tbody></table></div></section>`;
+        `<div class="notice">◷ &nbsp; ${canEditAttendance ? "Attendance is recorded for the selected date and study level." : "Attendance is read-only for your role."}</div><section class="panel"><div class="attendance-controls"><div class="field"><label for="attendance-date">Date</label><input id="attendance-date" type="date" value="${date}" max="${date}"></div><div class="field"><label for="attendance-class">Study level</label><select id="attendance-class"><option>All levels</option>${studyLevels.map(level => `<option>${escapeHTML(level)}</option>`).join("")}</select></div>${canEditAttendance ? `<button class="btn" data-action="save-attendance">Save attendance</button>` : ""}</div><div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Study level</th><th>Attendance</th></tr></thead><tbody id="attendance-rows">${rows}</tbody></table></div></section>`;
       document.getElementById("attendance-class").value = selectedClass;
       document.getElementById("attendance-class").addEventListener("change", updateAttendanceClass);
       document.getElementById("attendance-date").addEventListener("change", async event => {
@@ -884,17 +959,17 @@
         return;
       }
 
+      const canEdit = canManageStudyLevels();
       const rows = studyLevels.map((level, index) => `
         <tr>
           <td>${escapeHTML(String(index + 1))}</td>
           <td>${escapeHTML(level)}</td>
-          <td><button type="button" class="btn secondary" data-action="remove-study-level" data-study-level="${escapeHTML(level)}">Remove</button></td>
         </tr>
       `).join("");
 
       content.innerHTML = pageHeader("Study Levels", "Create and manage the levels available in your school.") + `
         <section class="panel">
-          <div class="panel-head">
+          ${canEdit ? `<div class="panel-head">
             <div>
               <h2>Create study level</h2>
               <p>Add a grade or academic level for your programs.</p>
@@ -906,16 +981,111 @@
               <input id="study-level-name" name="studyLevel" type="text" maxlength="80" placeholder="e.g. បរិញ្ញាបត្របច្ចេកទេស" required>
             </div>
             <button type="submit" class="btn">Create level</button>
-          </form>
+          </form>` : ""}
           <div class="table-wrap">
             <table class="table">
               <thead>
-                <tr><th>#</th><th>Study level</th><th>Action</th></tr>
+                <tr><th>#</th><th>Study level</th></tr>
               </thead>
-              <tbody>${rows || `<tr><td colspan="3"><div class="empty">No study levels yet.</div></td></tr>`}</tbody>
+              <tbody>${rows || `<tr><td colspan="2"><div class="empty">No study levels yet.</div></td></tr>`}</tbody>
             </table>
           </div>
         </section>`;
+    }
+
+    function renderNoPermission(page) {
+      content.innerHTML = pageHeader(page, currentLanguage === "km" ? "អ្នកមិនមានសិទ្ធិចូលប្រើទំព័រនេះទេ។" : "You do not have permission to access this page.") +
+        `<section class="panel"><div class="empty">${currentLanguage === "km" ? "សូមទាក់ទងអ្នកគ្រប់គ្រង ប្រសិនបើអ្នកគិតថានេះជាកំហុស។" : "Contact an administrator if you believe this is an error."}</div></section>`;
+    }
+
+    async function renderUsers(options = {}) {
+      if (!hasPagePermission("User Management")) {
+        renderNoPermission("User Management");
+        return;
+      }
+      if (options.loading) {
+        renderLoadingState("User Management", "Create accounts and manage access to the school system.", "Loading users...");
+        return;
+      }
+
+      renderLoadingState("User Management", "Create accounts and manage access to the school system.", "Loading users...");
+      try {
+        const data = await apiRequest("/api/users");
+        const roleOptions = Object.entries(roleNames).map(([role, names]) =>
+          `<option value="${role}">${escapeHTML(names[currentLanguage])}</option>`
+        ).join("");
+        const studentOptions = data.students.map(student =>
+          `<option value="${escapeHTML(student.id)}">${escapeHTML(student.id)} · ${escapeHTML(student.name || "")} · ${escapeHTML(student.className)}</option>`
+        ).join("");
+        const teacherOptions = data.teachers.map(teacher =>
+          `<option value="${escapeHTML(teacher.id)}">${escapeHTML(teacher.id)} · ${escapeHTML(teacher.name || "")}</option>`
+        ).join("");
+        const rows = data.users.map(user => `<tr>
+          <td>${escapeHTML(user.username)}</td>
+          <td>${escapeHTML(user.fullName)}</td>
+          <td>${escapeHTML(roleLabel(user.role))}</td>
+          <td>${escapeHTML(user.department || user.studentId || user.teacherId || user.guardianStudentIds?.join(", ") || "—")}</td>
+          <td><span class="badge ${user.isActive ? "active" : "pending"}">${user.isActive ? "Active" : "Inactive"}</span></td>
+          <td>${user.isActive ? `<form class="user-reset-form" data-user-id="${escapeHTML(user.id)}">
+            <input name="password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="New password (12+)" required>
+            <button class="btn secondary" type="submit">Reset password</button>
+          </form><button class="btn secondary" type="button" data-action="deactivate-user" data-user-id="${escapeHTML(user.id)}" ${user.id === currentUser.id ? "disabled" : ""}>Deactivate</button>` : "—"}</td>
+        </tr>`).join("");
+
+        content.innerHTML = pageHeader(uiLabel("User Management", "គ្រប់គ្រងអ្នកប្រើប្រាស់"), uiLabel("Create accounts, assign roles and links, and deactivate or reset accounts.", "បង្កើតគណនី កំណត់តួនាទី និងតំណភ្ជាប់ បិទគណនី ឬកំណត់ពាក្យសម្ងាត់ឡើងវិញ។")) +
+          `<section class="panel"><div class="panel-head"><div><h2>${uiLabel("Create user", "បង្កើតអ្នកប្រើប្រាស់")}</h2><p>${uiLabel("Passwords are hashed on the server and never returned to the browser.", "ពាក្យសម្ងាត់ត្រូវបានអ៊ិនគ្រីបនៅលើម៉ាស៊ីនមេ ហើយមិនត្រូវបានបញ្ជូនមកកម្មវិធីរុករកទេ។")}</p></div></div>
+            <form id="user-create-form">
+              <div class="form-grid">
+                <div class="field"><label for="new-user-username">${uiLabel("Username", "ឈ្មោះអ្នកប្រើ")}</label><input id="new-user-username" name="username" required maxlength="120" pattern="[A-Za-z0-9._-]+" autocomplete="off"></div>
+                <div class="field"><label for="new-user-name">${uiLabel("Full name", "ឈ្មោះពេញ")}</label><input id="new-user-name" name="fullName" required maxlength="160"></div>
+                <div class="field"><label for="new-user-role">${uiLabel("Role", "តួនាទី")}</label><select id="new-user-role" name="role" required><option value="">${uiLabel("Select role", "ជ្រើសរើសតួនាទី")}</option>${roleOptions}</select></div>
+                <div class="field user-link-field" data-link="department"><label for="new-user-department">${uiLabel("Department", "ដេប៉ាតឺម៉ង់")}</label><input id="new-user-department" name="department" maxlength="120"></div>
+                <div class="field user-link-field" data-link="student"><label for="new-user-student">${uiLabel("Student account link", "ភ្ជាប់គណនីសិស្ស")}</label><select id="new-user-student" name="studentId"><option value="">${uiLabel("Select student", "ជ្រើសរើសសិស្ស")}</option>${studentOptions}</select></div>
+                <div class="field user-link-field" data-link="teacher"><label for="new-user-teacher">${uiLabel("Teacher account link", "ភ្ជាប់គណនីគ្រូ")}</label><select id="new-user-teacher" name="teacherId"><option value="">${uiLabel("Select teacher", "ជ្រើសរើសគ្រូ")}</option>${teacherOptions}</select></div>
+                <div class="field user-link-field" data-link="guardian"><label for="new-user-children">${uiLabel("Guardian's children", "កូនរបស់អាណាព្យាបាល")}</label><select id="new-user-children" name="guardianStudentIds" multiple size="4">${studentOptions}</select></div>
+                <div class="field"><label for="new-user-password">${uiLabel("Initial password (12+ characters)", "ពាក្យសម្ងាត់ដំបូង (យ៉ាងតិច ១២ តួអក្សរ)")}</label><input id="new-user-password" name="password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required></div>
+              </div>
+              <div class="telegram-form-actions"><button type="submit" class="btn">${uiLabel("Create user", "បង្កើតអ្នកប្រើប្រាស់")}</button></div>
+            </form>
+          </section>
+          <section class="panel" style="margin-top:16px"><div class="panel-head"><div><h2>${uiLabel("Accounts", "គណនី")}</h2><p>${data.users.length} ${uiLabel("user account(s)", "គណនីអ្នកប្រើ")}</p></div></div>
+            <div class="table-wrap"><table class="table"><thead><tr><th>${uiLabel("Username", "ឈ្មោះអ្នកប្រើ")}</th><th>${uiLabel("Full name", "ឈ្មោះពេញ")}</th><th>${uiLabel("Role", "តួនាទី")}</th><th>${uiLabel("Department / link", "ដេប៉ាតឺម៉ង់ / តំណភ្ជាប់")}</th><th>${uiLabel("Status", "ស្ថានភាព")}</th><th>${uiLabel("Actions", "សកម្មភាព")}</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="6"><div class="empty">No user accounts have been created yet.</div></td></tr>`}</tbody></table></div>
+          </section>`;
+        const roleSelect = document.getElementById("new-user-role");
+        const updateRoleFields = () => {
+          const role = roleSelect.value;
+          document.querySelectorAll(".user-link-field").forEach(field => {
+            const link = field.dataset.link;
+            field.hidden = link === "department" ? !["dept_head", "dept_deputy"].includes(role)
+              : link === "student" ? role !== "student"
+                : link === "teacher" ? role !== "teacher"
+                  : role !== "guardian";
+          });
+        };
+        roleSelect.addEventListener("change", updateRoleFields);
+        updateRoleFields();
+      } catch (error) {
+        console.error("Could not load user management page.", error);
+        renderDataErrorState("User Management", "Create accounts and manage access to the school system.", error.message);
+      }
+    }
+
+    function renderMyAccount() {
+      if (!hasPagePermission("My Account")) {
+        renderNoPermission("My Account");
+        return;
+      }
+      content.innerHTML = pageHeader(
+        currentLanguage === "km" ? "គណនីរបស់ខ្ញុំ" : "My Account",
+        currentLanguage === "km" ? "ប្តូរពាក្យសម្ងាត់របស់អ្នក។" : "Change your account password.",
+      ) + `<section class="panel"><div class="panel-head"><div><h2>${currentLanguage === "km" ? "ប្តូរពាក្យសម្ងាត់" : "Change password"}</h2><p>${currentLanguage === "km" ? "ប្រើពាក្យសម្ងាត់ថ្មីដែលមានយ៉ាងតិច ១២ តួអក្សរ។" : "Choose a new password with at least 12 characters."}</p></div></div>
+        <form id="change-password-form" class="form-grid">
+          <div class="field"><label for="current-password">${currentLanguage === "km" ? "ពាក្យសម្ងាត់បច្ចុប្បន្ន" : "Current password"}</label><input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024"></div>
+          <div class="field"><label for="new-password">${currentLanguage === "km" ? "ពាក្យសម្ងាត់ថ្មី" : "New password"}</label><input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="12" required maxlength="1024"></div>
+          <div class="field"><label for="confirm-password">${currentLanguage === "km" ? "បញ្ជាក់ពាក្យសម្ងាត់ថ្មី" : "Confirm new password"}</label><input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required maxlength="1024"></div>
+          <div class="telegram-form-actions"><button type="submit" class="btn">${currentLanguage === "km" ? "រក្សាទុកពាក្យសម្ងាត់" : "Update password"}</button></div>
+        </form></section>`;
     }
 
     function renderModule(title) {
@@ -930,9 +1100,11 @@
         "Announcements": ["◉", "Share important school news with families and staff."]
       };
       const [icon, description] = info[title] || ["▱", `Manage ${title.toLowerCase()} and keep school information up to date.`];
+      const canCreateResource = ["director", "deputy_director"].includes(currentUser?.role) ||
+        (title === "Student Results" && currentUser?.role === "teacher");
       const cards = [
         ["View records", `Browse and search your ${title.toLowerCase()} records.`, "▤"],
-        ["Add new", `Create a new ${title.toLowerCase()} record.`, "＋"],
+        ...(canCreateResource ? [["Add new", `Create a new ${title.toLowerCase()} record.`, "＋"]] : []),
         ["Reports", `Review and export ${title.toLowerCase()} summaries.`, "▥"]
       ];
       content.innerHTML = pageHeader(title, description) +
@@ -1017,6 +1189,10 @@
     }
 
     function navigate(page, group = "") {
+      if (!hasPagePermission(page)) {
+        renderNoPermission(page);
+        return;
+      }
       currentPage = page;
       sidebar.classList.remove("open");
       document.getElementById("overlay").classList.remove("open");
@@ -1042,6 +1218,8 @@
       else if (page === "Import from Excel") renderImportStudents();
       else if (page === "Teacher List") renderTeachers();
       else if (page === "Take Attendance" || page === "Daily Attendance") renderAttendance();
+      else if (page === "User Management") renderUsers();
+      else if (page === "My Account") renderMyAccount();
       else if (["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"].includes(page)) renderTelegram(page);
       else renderModule(page);
     }
@@ -1266,6 +1444,22 @@
           );
         }
       }
+      else if (action.dataset.action === "deactivate-user") {
+        const userId = action.dataset.userId;
+        if (!userId || userId === currentUser.id) return;
+        if (!window.confirm("Deactivate this account? The user will no longer be able to sign in.")) return;
+        try {
+          await apiRequest("/api/users", {
+            method: "PATCH",
+            body: JSON.stringify({ action: "deactivate", userId })
+          });
+          showToast("User account deactivated.");
+          await renderUsers();
+        } catch (error) {
+          console.error("Could not deactivate user account.", error);
+          showToast(error.message);
+        }
+      }
       else if (action.dataset.action === "save-attendance") {
         const date = document.getElementById("attendance-date").value;
         if (!date) {
@@ -1303,6 +1497,81 @@
     });
     document.addEventListener("submit", async event => {
       if (!currentUser) return;
+      if (event.target.id === "user-create-form") {
+        event.preventDefault();
+        const formElement = event.target;
+        const form = new FormData(formElement);
+        const user = {
+          username: String(form.get("username") || "").trim(),
+          fullName: String(form.get("fullName") || "").trim(),
+          role: String(form.get("role") || ""),
+          department: String(form.get("department") || "").trim() || null,
+          studentId: String(form.get("studentId") || "") || null,
+          teacherId: String(form.get("teacherId") || "") || null,
+          guardianStudentIds: form.getAll("guardianStudentIds"),
+          password: String(form.get("password") || "")
+        };
+        const submitButton = formElement.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        try {
+          await apiRequest("/api/users", { method: "POST", body: JSON.stringify(user) });
+          formElement.reset();
+          showToast("User account created.");
+          await renderUsers();
+        } catch (error) {
+          console.error("Could not create user account.", error);
+          showToast(error.message);
+        } finally {
+          submitButton.disabled = false;
+        }
+        return;
+      }
+      if (event.target.matches(".user-reset-form")) {
+        event.preventDefault();
+        const formElement = event.target;
+        const form = new FormData(formElement);
+        try {
+          await apiRequest("/api/users", {
+            method: "PATCH",
+            body: JSON.stringify({
+              action: "reset-password",
+              userId: formElement.dataset.userId,
+              password: String(form.get("password") || "")
+            })
+          });
+          formElement.reset();
+          showToast("Password reset successfully.");
+        } catch (error) {
+          console.error("Could not reset user password.", error);
+          showToast(error.message);
+        }
+        return;
+      }
+      if (event.target.id === "change-password-form") {
+        event.preventDefault();
+        const formElement = event.target;
+        const form = new FormData(formElement);
+        const newPassword = String(form.get("newPassword") || "");
+        if (newPassword !== String(form.get("confirmPassword") || "")) {
+          showToast(currentLanguage === "km" ? "ពាក្យសម្ងាត់ថ្មីមិនត្រូវគ្នាទេ។" : "The new passwords do not match.");
+          return;
+        }
+        try {
+          await apiRequest("/api/auth/password", {
+            method: "POST",
+            body: JSON.stringify({
+              currentPassword: String(form.get("currentPassword") || ""),
+              newPassword
+            })
+          });
+          formElement.reset();
+          showToast(currentLanguage === "km" ? "បានប្តូរពាក្យសម្ងាត់ដោយជោគជ័យ។" : "Password updated successfully.");
+        } catch (error) {
+          console.error("Could not change account password.", error);
+          showToast(error.message);
+        }
+        return;
+      }
       if (event.target.id === "study-level-form") {
         event.preventDefault();
         const formElement = event.target;

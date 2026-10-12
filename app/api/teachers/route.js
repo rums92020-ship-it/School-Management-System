@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { sessionCookieName, verifySessionToken } from "../../../lib/auth";
+import { requireRole } from "../../../lib/auth";
 import { getPool } from "../../../lib/db";
 
 export const runtime = "nodejs";
@@ -36,10 +35,13 @@ function normalizeTeacher(value) {
 
 export async function POST(request) {
   try {
-    const cookieStore = await cookies();
-    if (!verifySessionToken(cookieStore.get(sessionCookieName)?.value)) {
-      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    }
+    const { response } = await requireRole([
+      "director",
+      "deputy_director",
+      "office_head",
+      "office_deputy",
+    ]);
+    if (response) return response;
 
     const teacher = normalizeTeacher(await request.json());
     await getPool().query(
