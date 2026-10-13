@@ -86,3 +86,10 @@ Generate a session secret with `node -e "console.log(require('node:crypto').rand
 - Keep changes focused and preserve the existing dashboard behavior and responsive styling.
 - Use the existing JavaScript style in `public/legacy-app.js`; avoid adding example personal data.
 - Run `npm run lint` after code changes and `npm run build` when practical. Run them sequentially, not alongside a running development server.
+
+## Status Update (2026-10-13)
+
+- This project is the admin-facing school management dashboard for student, teacher, study-level, and attendance records.
+- Preserve the existing DOM hooks (`id`, `class`, and form field names) in `index.html` and `public/legacy-app.js` unless the UI is intentionally migrated together in a coordinated change.
+- Treat all database access as server-side only through the authenticated API routes; never expose credentials or tokens in browser code or committed files.
+- Use `.env.local` for local configuration and keep real secrets private. Do not commit environment values or personal data.
