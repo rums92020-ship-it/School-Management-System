@@ -1301,8 +1301,20 @@
         `<section class="panel"><div class="empty">Loading ${escapeHTML(title.toLowerCase())}...</div></section>`;
       try {
         if (page === "Bot Settings") {
+          const status = await apiRequest("/api/telegram/status");
+          const badge = status.configured ? "Backend connected" : "Backend not connected";
+          const statusTone = status.configured ? "active" : "pending";
+          const username = status.bot_username ? `@${escapeHTML(status.bot_username)}` : "Not configured";
           content.innerHTML = pageHeader(title, uiLabel("Telegram delivery uses private server configuration.", "ការផ្ញើ Telegram ប្រើការកំណត់ឯកជននៅលើម៉ាស៊ីនមេ។")) +
-            `<section class="panel"><div class="panel-head"><div><h2>${uiLabel("Secure bot configuration", "ការកំណត់ Bot ដោយសុវត្ថិភាព")}</h2><p>${uiLabel("Bot tokens and webhook secrets are never sent to this page.", "Token និង secret របស់ Bot មិនត្រូវបានផ្ញើមកទំព័រនេះទេ។")}</p></div></div><div class="telegram-notice"><strong>${uiLabel("Deployment setup:", "ការកំណត់ដាក់ប្រើ៖")}</strong> TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME, TELEGRAM_WEBHOOK_SECRET, and CRON_SECRET must be set in private server environment variables.</div></section>`;
+            `<section class="panel"><div class="panel-head"><div><h2>${uiLabel("Secure bot configuration", "ការកំណត់ Bot ដោយសុវត្ថិភាព")}</h2><p>${uiLabel("Bot tokens and webhook secrets are never sent to this page.", "Token និង secret របស់ Bot មិនត្រូវបានផ្ញើមកទំព័រនេះទេ។")}</p></div><span class="connection-badge ${statusTone}">${badge}</span></div>
+            <div class="telegram-notice"><strong>${uiLabel("Deployment setup:", "ការកំណត់ដាក់ប្រើ៖")}</strong> TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME, TELEGRAM_WEBHOOK_SECRET, and CRON_SECRET must be set in private server environment variables.</div>
+            <div class="telegram-toggle-list" style="margin-top:16px">
+              <div class="telegram-toggle"><span><strong>Bot username</strong><small>${escapeHTML(username)}</small></span><span class="badge ${status.bot_username ? "active" : "pending"}">${status.bot_username ? "Ready" : "Not set"}</span></div>
+              <div class="telegram-toggle"><span><strong>Server token</strong><small>${status.backend_connected ? "Present in server env" : "Missing private config"}</small></span><span class="badge ${status.backend_connected ? "active" : "pending"}">${status.backend_connected ? "Ready" : "Required"}</span></div>
+              <div class="telegram-toggle"><span><strong>Linked chats</strong><small>${status.linked_chats} active connection${status.linked_chats === 1 ? "" : "s"}</small></span><span class="badge ${status.linked_chats > 0 ? "active" : "pending"}">${status.linked_chats > 0 ? "Connected" : "None"}</span></div>
+            </div>
+            <div class="telegram-form-actions"><button type="button" class="btn secondary" data-action="test-telegram">Send test message</button></div>
+          </section>`;
           return;
         }
         if (page === "Guardian Notifications") {
@@ -1785,11 +1797,37 @@
           ${canEdit && !teacherData.teachers.length ? `<div class="notice">Assign at least one teacher to this class before adding timetable slots.</div>` : ""}`;
         const slotForm = document.getElementById("timetable-slot-form");
         if (slotForm) slotForm.addEventListener("submit", saveTimetableSlot);
-        const generateButton = editor.querySelector('[data-action="preview-session-generation"]');
-        if (generateButton) generateButton.addEventListener("click", previewSessionGeneration);
       } catch (error) {
         console.error("Could not load class timetable.", error);
         editor.innerHTML = `<div class="empty error-state">${escapeHTML(error.message)}</div>`;
+      }
+    }
+
+    async function previewSessionGeneration(event) {
+      const trigger = event.currentTarget;
+      const termId = String(trigger.dataset.termId || activeTimetableContext?.termId || "");
+      const classId = String(trigger.dataset.classId || activeTimetableContext?.classId || "");
+      if (!termId || !classId) {
+        showToast("Select a class and term before generating sessions.");
+        return;
+      }
+      try {
+        const preview = await apiRequest("/api/timetable/generate", {
+          method: "POST",
+          body: JSON.stringify({ term_id: termId, class_id: classId, dry_run: true })
+        });
+        const counts = preview.preview;
+        const shouldCreate = window.confirm(
+          `Session generation preview\n${counts.to_create} to create\n${counts.existing} already exist\n${counts.holiday_skipped} holiday sessions skipped\n\nGenerate these sessions now?`
+        );
+        if (!shouldCreate) return;
+        const result = await apiRequest("/api/timetable/generate", {
+          method: "POST",
+          body: JSON.stringify({ term_id: termId, class_id: classId })
+        });
+        showToast(`Generated ${result.created} sessions; skipped ${result.skipped}.`);
+      } catch (error) {
+        showToast(error.message);
       }
     }
 
@@ -2539,7 +2577,20 @@
           showToast(error.message);
         }
       }
-      else if (action.dataset.action === "test-telegram") showToast("Telegram delivery is managed by the secure server configuration.");
+      else if (action.dataset.action === "test-telegram") {
+        const chatId = action.dataset.chatId || document.getElementById("telegram-test-chat-id")?.value || "";
+        if (!chatId) {
+          showToast("Select a linked Telegram chat before sending a test message.");
+          return;
+        }
+        try {
+          await apiRequest("/api/telegram/send-test", {
+            method: "POST",
+            body: JSON.stringify({ chat_id: chatId })
+          });
+          showToast("Telegram test message sent.");
+        } catch (error) { showToast(error.message); }
+      }
       else if (action.dataset.action === "teacher-room-checkin") {
         await startTeacherCheckinCamera(action.dataset.sessionId);
       } else if (action.dataset.action === "office-checkin") {
@@ -2596,7 +2647,7 @@
           return;
         }
         try {
-          const link = await apiRequest("/api/me/telegram-link", {
+          const link = await apiRequest("/api/telegram/link-token", {
             method: "POST",
             body: JSON.stringify({ guardian_user_id: guardianId })
           });
@@ -2612,8 +2663,7 @@
           anchor.rel = "noopener noreferrer";
           target.append(anchor);
         } catch (error) { showToast(error.message); }
-      } else if (action.dataset.action === "resend-notification") {
-        try {
+      } else if (action.dataset.action === "resend-notification") {        try {
           await apiRequest(`/api/admin/notifications/${encodeURIComponent(action.dataset.notificationId)}/resend`, { method: "POST" });
           showToast("Notification queued for retry.");
           await renderNotificationFeature("Message Log");
