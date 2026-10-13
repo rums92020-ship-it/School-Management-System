@@ -1,5 +1,7 @@
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS public.terms (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     academic_year VARCHAR(30) NOT NULL,
@@ -13,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.terms (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS terms_only_one_current_idx
-    ON public.terms (is_current)
+    ON public.terms (academic_year)
     WHERE is_current = TRUE;
 
 CREATE TABLE IF NOT EXISTS public.shifts (
