@@ -49,7 +49,7 @@ export default function LegacyDashboard({ markup, timeZone }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [timeZone]);
 
   return (
     <>

@@ -283,6 +283,14 @@
       }).format(new Date(value));
     }
 
+    function formatAppDateTime(value) {
+      return new Intl.DateTimeFormat(currentLanguage === "km" ? "km" : "en", {
+        timeZone: window.APP_TIMEZONE || "Asia/Phnom_Penh",
+        dateStyle: "short",
+        timeStyle: "short"
+      }).format(new Date(value));
+    }
+
     function updateUserProfile() {
       const profileName = document.querySelector(".profile-copy strong");
       const profileRole = document.querySelector(".profile-copy small");
@@ -395,8 +403,7 @@
       else if (currentPage === "Daily Attendance") renderAttendance();
       else if (currentPage === "Attendance Reports") renderAttendanceReports();
       else if (currentPage === "Import from Excel") renderImportStudents();
-      else if (["Notification Rules", "Parent Chat Links", "Message Log", "Room QR Cards", "Needs Review", "Guardian Notifications"].includes(currentPage)) renderNotificationFeature(currentPage);
-      else if (currentPage === "Bot Settings") renderTelegram("Bot Settings");
+      else if (["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log", "Room QR Cards", "Needs Review", "Guardian Notifications"].includes(currentPage)) renderNotificationFeature(currentPage);
       else if (currentPage === "Notification Rules") renderTelegram("Notification Rules");
       else if (currentPage === "Parent Chat Links") renderTelegram("Parent Chat Links");
       else if (currentPage === "Message Log") renderTelegram("Message Log");
@@ -491,7 +498,7 @@
           count.textContent = data.unread > 99 ? "99+" : String(data.unread || "");
           count.hidden = !data.unread;
         }
-        panel.innerHTML = `<div class="notification-panel-head"><strong>Notifications${data.unread ? ` · ${data.unread} unread` : ""}</strong><button type="button" aria-label="Close notifications" data-action="close-notifications">×</button></div>${data.notifications.length ? data.notifications.map(item => `<article class="notification-item ${item.read_at ? "" : "unread"}"><p>${escapeHTML(item.body)}</p><small>${escapeHTML(new Date(item.created_at).toLocaleString())}</small>${item.read_at ? "" : `<button class="text-link" data-action="mark-notification-read" data-notification-id="${escapeAttribute(item.id)}">Mark read</button>`}</article>`).join("") : `<div class="empty">No notifications yet.</div>`}`;
+        panel.innerHTML = `<div class="notification-panel-head"><strong>${uiLabel("Notifications", "ការជូនដំណឹង")}${data.unread ? ` · ${data.unread} ${uiLabel("unread", "មិនទាន់អាន")}` : ""}</strong><button type="button" aria-label="Close notifications" data-action="close-notifications">×</button></div>${data.notifications.length ? data.notifications.map(item => `<article class="notification-item ${item.read_at ? "" : "unread"}"><p>${escapeHTML(item.body)}</p><small>${escapeHTML(formatAppDateTime(item.created_at))}</small>${item.read_at ? "" : `<button class="text-link" data-action="mark-notification-read" data-notification-id="${escapeAttribute(item.id)}">${uiLabel("Mark read", "សម្គាល់ថាបានអាន")}</button>`}</article>`).join("") : `<div class="empty">${uiLabel("No notifications yet.", "មិនទាន់មានការជូនដំណឹងទេ។")}</div>`}`;
       } catch (error) {
         panel.innerHTML = `<div class="notification-panel-head"><strong>Notifications</strong><button type="button" aria-label="Close notifications" data-action="close-notifications">×</button></div><div class="empty error-state">${escapeHTML(error.message)} <button data-action="reload-notifications" class="text-link">Retry</button></div>`;
       }
@@ -1289,10 +1296,15 @@
     }
 
     async function renderNotificationFeature(page) {
-      const title = page;
-      content.innerHTML = pageHeader(title, "Manage school notifications securely.") +
+      const title = t(page);
+      content.innerHTML = pageHeader(title, uiLabel("Manage school notifications securely.", "គ្រប់គ្រងការជូនដំណឹងរបស់សាលាដោយសុវត្ថិភាព។")) +
         `<section class="panel"><div class="empty">Loading ${escapeHTML(title.toLowerCase())}...</div></section>`;
       try {
+        if (page === "Bot Settings") {
+          content.innerHTML = pageHeader(title, uiLabel("Telegram delivery uses private server configuration.", "ការផ្ញើ Telegram ប្រើការកំណត់ឯកជននៅលើម៉ាស៊ីនមេ។")) +
+            `<section class="panel"><div class="panel-head"><div><h2>${uiLabel("Secure bot configuration", "ការកំណត់ Bot ដោយសុវត្ថិភាព")}</h2><p>${uiLabel("Bot tokens and webhook secrets are never sent to this page.", "Token និង secret របស់ Bot មិនត្រូវបានផ្ញើមកទំព័រនេះទេ។")}</p></div></div><div class="telegram-notice"><strong>${uiLabel("Deployment setup:", "ការកំណត់ដាក់ប្រើ៖")}</strong> TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME, TELEGRAM_WEBHOOK_SECRET, and CRON_SECRET must be set in private server environment variables.</div></section>`;
+          return;
+        }
         if (page === "Guardian Notifications") {
           const data = await apiRequest("/api/me/notification-preferences");
           content.innerHTML = pageHeader(title, "Choose which attendance updates your family receives.") +
@@ -1304,7 +1316,7 @@
         if (page === "Room QR Cards") {
           const result = await apiRequest("/api/admin/rooms/qr");
           content.innerHTML = pageHeader(title, "Print or replace classroom QR cards. Replacing a token invalidates the old card.") +
-            `<section class="panel"><div class="panel-head"><div><h2>Classroom QR cards</h2><p>Only authorized office and director accounts can view room tokens.</p></div><button class="btn secondary" data-action="print-room-cards">Print all rooms</button></div><div id="room-qr-grid" class="qr-grid">${result.rooms.map(room => `<article class="qr-card"><div class="qr-box" id="room-qr-${escapeAttribute(room.id)}"></div><div class="qr-meta"><strong>${escapeHTML(room.name)}</strong><button class="btn secondary" data-action="regenerate-room-qr" data-room-id="${escapeAttribute(room.id)}">Regenerate QR</button></div></article>`).join("") || `<div class="empty">No rooms are configured.</div>`}</div></section>`;
+            `<section class="panel"><div class="panel-head"><div><h2>Classroom QR cards</h2><p>Only authorized office and director accounts can view room tokens.</p></div><button class="btn secondary" data-action="print-room-cards">Print all rooms</button></div><div id="room-qr-grid" class="qr-grid">${result.rooms.map(room => `<article class="qr-card" data-room-card="${escapeAttribute(room.id)}"><div class="qr-box" id="room-qr-${escapeAttribute(room.id)}"></div><div class="qr-meta"><strong>${escapeHTML(room.name)}</strong><button class="btn secondary" data-action="print-room-card" data-room-id="${escapeAttribute(room.id)}">Print this room</button><button class="btn secondary" data-action="regenerate-room-qr" data-room-id="${escapeAttribute(room.id)}">Regenerate QR</button></div></article>`).join("") || `<div class="empty">No rooms are configured.</div>`}</div></section>`;
           const QRCode = await getQrLibrary();
           for (const room of result.rooms) {
             const target = document.getElementById(`room-qr-${room.id}`);
@@ -1351,6 +1363,35 @@
     }
 
     const timetableKhmerTranslations = {
+      "Room QR Cards": "កាត QR បន្ទប់",
+      "Needs Review": "ត្រូវការពិនិត្យ",
+      "Parent Chat Links": "តំណភ្ជាប់ Telegram អាណាព្យាបាល",
+      "Notification Rules": "ច្បាប់ការជូនដំណឹង",
+      "Message Log": "កំណត់ហេតុសារ",
+      "Guardian Notifications": "ការជូនដំណឹងអាណាព្យាបាល",
+      "Manage school notifications securely.": "គ្រប់គ្រងការជូនដំណឹងរបស់សាលាដោយសុវត្ថិភាព។",
+      "Choose which attendance updates your family receives.": "ជ្រើសរើសព័ត៌មានវត្តមានដែលគ្រួសាររបស់អ្នកទទួលបាន។",
+      "Print or replace classroom QR cards. Replacing a token invalidates the old card.": "បោះពុម្ព ឬបង្កើតកាត QR បន្ទប់ឡើងវិញ។ កាតចាស់នឹងអស់សុពលភាព។",
+      "Resolve sessions that ended without a teacher check-in.": "ដោះស្រាយម៉ោងសិក្សាដែលគ្រូមិនបានចុះវត្តមាន។",
+      "Choose which staff roles receive teacher and unresolved-session alerts.": "ជ្រើសរើសតួនាទីបុគ្គលិកដែលទទួលការជូនដំណឹងអំពីគ្រូ និងម៉ោងសិក្សា។",
+      "Generate a single-use Telegram start link for a guardian.": "បង្កើតតំណ Telegram ប្រើបានម្ដងសម្រាប់អាណាព្យាបាល។",
+      "Review Telegram delivery status and retry failed messages.": "ពិនិត្យស្ថានភាពផ្ញើ Telegram និងផ្ញើសារដែលបរាជ័យម្ដងទៀត។",
+      "No sessions need review.": "មិនមានម៉ោងសិក្សាត្រូវការពិនិត្យទេ។",
+      "No rooms are configured.": "មិនទាន់មានបន្ទប់ទេ។",
+      "No messages have been recorded.": "មិនទាន់មានសារត្រូវបានកត់ត្រាទេ។",
+      "No linked children were found.": "រកមិនឃើញកូនដែលបានភ្ជាប់ទេ។",
+      "Present / late": "មករៀន / មកយឺត",
+      "Absent / corrections": "អវត្តមាន / ការកែតម្រូវ",
+      "Connect Telegram": "ភ្ជាប់ Telegram",
+      "Disconnect Telegram": "ផ្ដាច់ Telegram",
+      "Print all rooms": "បោះពុម្ពបន្ទប់ទាំងអស់",
+      "Print this room": "បោះពុម្ពបន្ទប់នេះ",
+      "Regenerate QR": "បង្កើត QR ឡើងវិញ",
+      "Assign": "ចាត់តាំង",
+      "Cancel session": "លុបចោលម៉ោងសិក្សា",
+      "Check in for teacher": "ចុះវត្តមានជំនួសគ្រូ",
+      "Save notification rules": "រក្សាទុកច្បាប់ជូនដំណឹង",
+      "Generate 30-minute link": "បង្កើតតំណរយៈពេល ៣០ នាទី",
       "Classes": "ថ្នាក់រៀន",
       "Class timetable": "កាលវិភាគថ្នាក់រៀន",
       "Terms & shifts": "ឆមាស និងវេនសិក្សា",
@@ -2282,7 +2323,7 @@
       else if (page === "Attendance Reports") renderAttendanceReports();
       else if (page === "User Management") renderUsers();
       else if (page === "My Account") renderMyAccount();
-      else if (["Notification Rules", "Parent Chat Links", "Message Log", "Room QR Cards", "Needs Review", "Guardian Notifications"].includes(page)) renderNotificationFeature(page);
+      else if (["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log", "Room QR Cards", "Needs Review", "Guardian Notifications"].includes(page)) renderNotificationFeature(page);
       else if (["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"].includes(page)) renderTelegram(page);
       else renderModule(page);
     }
@@ -2586,6 +2627,18 @@
         } catch (error) { showToast(error.message); }
       } else if (action.dataset.action === "print-room-cards") {
         window.print();
+      } else if (action.dataset.action === "print-room-card") {
+        const grid = document.getElementById("room-qr-grid");
+        if (grid) {
+          grid.dataset.printRoom = action.dataset.roomId;
+          const selectedCard = grid.querySelector(`[data-room-card="${action.dataset.roomId}"]`);
+          selectedCard?.classList.add("print-selected");
+          window.addEventListener("afterprint", () => {
+            delete grid.dataset.printRoom;
+            selectedCard?.classList.remove("print-selected");
+          }, { once: true });
+          window.print();
+        }
       } else if (action.dataset.action === "mark-notification-read") {
         try {
           await apiRequest(`/api/notifications/${encodeURIComponent(action.dataset.notificationId)}/read`, { method: "POST" });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRole } from "../../../../../lib/auth";
 import { getPool } from "../../../../../lib/db";
 import { rateLimit } from "../../../../../lib/rate-limit";
-import { jsonError, sessionTimezone } from "../../../../../lib/timetable";
+import { jsonError, parseUuid, sessionTimezone } from "../../../../../lib/timetable";
 import { enqueueTeacherArrival } from "../../../../../lib/session-events";
 import { scheduleNotificationDelivery } from "../../../../../lib/notifications";
 import { writeAttendanceAudit } from "../../../../../lib/session-notifications";
@@ -19,7 +19,7 @@ export async function POST(request, { params }) {
     const { user, response } = await requireRole(["teacher", ...officeRoles]);
     if (response) return response;
     const { id: sessionId } = await params;
-    if (!/^[0-9a-f-]{36}$/i.test(sessionId || "")) return jsonError("Invalid session ID.", 400);
+    if (!parseUuid(sessionId)) return jsonError("Invalid session ID.", 400);
     let body;
     try {
       body = await request.json();
@@ -58,25 +58,22 @@ export async function POST(request, { params }) {
         await client.query("ROLLBACK");
         return jsonError("Session not found.", 404);
       }
-      if (session.status === "cancelled") {
+      if (session.status === "cancelled" || session.status === "closed") {
         await client.query("ROLLBACK");
-        return jsonError("A cancelled session cannot be checked in.", 409);
+        return jsonError("A closed or cancelled session cannot be checked in.", 409);
+      }
+      if (!isOffice &&
+          (!user.teacher_id ||
+           (user.teacher_id !== session.teacher_id &&
+            user.teacher_id !== session.substitute_teacher_id))) {
+        await client.query("ROLLBACK");
+        return jsonError("You are not assigned to this session.", 403);
       }
       if (!session.within_window) {
         await client.query("ROLLBACK");
         return jsonError("Check-in is allowed from 15 minutes before the session until its end.", 409);
       }
-      if (session.teacher_checkin_at) {
-        await client.query("COMMIT");
-        return NextResponse.json({ already: true });
-      }
       if (!isOffice) {
-        if (!user.teacher_id ||
-            (user.teacher_id !== session.teacher_id &&
-             user.teacher_id !== session.substitute_teacher_id)) {
-          await client.query("ROLLBACK");
-          return jsonError("You are not assigned to this session.", 403);
-        }
         if (!session.room) {
           await client.query("ROLLBACK");
           return jsonError("This session has no room QR; ask the office to check you in.", 409);
@@ -90,10 +87,14 @@ export async function POST(request, { params }) {
           return jsonError("This QR code does not match the session room.", 403);
         }
       }
+      if (session.teacher_checkin_at) {
+        await client.query("COMMIT");
+        return NextResponse.json({ already: true });
+      }
 
       const checked = await client.query(
         `UPDATE class_sessions
-         SET teacher_checkin_at = NOW(), teacher_checkin_method = $2
+         SET teacher_checkin_at = NOW(), teacher_checkin_method = $2, needs_review = FALSE
          WHERE id = $1
          RETURNING teacher_checkin_at`,
         [sessionId, isOffice ? "office" : "room_qr"],

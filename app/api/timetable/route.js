@@ -10,6 +10,7 @@ import {
   jsonError,
   leadershipRoles,
   parseUuid,
+  sessionTimezone,
   termManagerRoles,
   validTime,
   validWeekday,
@@ -268,13 +269,13 @@ export async function PATCH(request) {
       const protectedSession = await client.query(
         `SELECT 1 FROM class_sessions AS session
          WHERE session.slot_id = $1
-           AND (session.session_date < (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date
+           AND (session.session_date < (NOW() AT TIME ZONE $2)::date
              OR EXISTS (
                SELECT 1 FROM session_attendance
                WHERE session_attendance.session_id = session.id
              ))
          LIMIT 1`,
-        [slotId],
+        [slotId, sessionTimezone],
       );
       const old = await client.query("SELECT class_id, term_id FROM timetable_slots WHERE id = $1", [slotId]);
       if (protectedSession.rowCount &&

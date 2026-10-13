@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "../../../lib/auth";
 import { getPool } from "../../../lib/db";
+import { APP_TIMEZONE } from "../../../lib/app-constants";
 
 export const runtime = "nodejs";
 
@@ -75,8 +76,8 @@ export async function GET(request) {
       pool.query(`SELECT COUNT(*)::int AS recorded,
         COUNT(*) FILTER (WHERE attendance_records.status = 'Present')::int AS present
         FROM attendance_records ${attendanceFilter}
-        ${attendanceFilter ? "AND" : "WHERE"} attendance_records.attendance_date = COALESCE($${values.length + 1}::date, CURRENT_DATE)`,
-      [...values, date]),
+        ${attendanceFilter ? "AND" : "WHERE"} attendance_records.attendance_date = COALESCE($${values.length + 1}::date, (NOW() AT TIME ZONE $${values.length + 2})::date)`,
+      [...values, date, APP_TIMEZONE]),
     ]);
 
     return NextResponse.json({

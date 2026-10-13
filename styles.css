@@ -340,6 +340,7 @@
       #room-qr-grid, #room-qr-grid * { visibility: visible !important; }
       #room-qr-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(3, 1fr); }
       #room-qr-grid .qr-card { break-inside: avoid; box-shadow: none; }
+      #room-qr-grid[data-print-room] .qr-card:not(.print-selected) { display: none; }
       #room-qr-grid .btn { display: none; }
     }
     @media (prefers-reduced-motion: reduce) {
