@@ -7,10 +7,10 @@
       { name: "Academics", icon: "▱", items: ["Subject List", "Class Timetable", "My Timetable", "Terms & Shifts", "Exam Schedule", "Student Results"] },
       { name: "Attendance", icon: "◷", items: ["Session Attendance", "My Attendance", "Take Attendance", "QR Attendance", "Daily Attendance", "Monthly Attendance", "Attendance Reports"] },
       { name: "Finance", icon: "$", items: ["School Fees", "Student Payments", "Invoices", "Expenses", "Financial Reports"] },
-      { name: "Community", icon: "♧", items: ["Parent List", "Announcements", "Messages", "School Events"] },
+      { name: "Community", icon: "♧", items: ["Parent List", "Announcements", "Messages", "School Events", "Guardian Notifications"] },
       { name: "Library", icon: "▣", items: ["Books", "Borrow Books", "Return Books", "Library Reports"] },
       { name: "Reports & settings", icon: "⚙", items: ["Student Reports", "Academic Reports", "User Management", "School Information"] },
-      { name: "Telegram Integration", icon: "➤", items: ["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"] },
+      { name: "Telegram Integration", icon: "➤", items: ["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log", "Room QR Cards", "Needs Review"] },
       { name: "Account", icon: "♙", items: ["My Account"] }
     ];
     const rolePages = {
@@ -37,6 +37,11 @@
       student: ["My Timetable", "Terms & Shifts", "My Attendance"],
       guardian: ["My Timetable", "Terms & Shifts", "My Attendance"]
     };
+    const notificationAdminPages = ["Notification Rules", "Parent Chat Links", "Message Log", "Room QR Cards", "Needs Review"];
+    for (const role of ["director", "deputy_director", "office_head", "office_deputy", "office_staff"]) {
+      rolePages[role].push(...notificationAdminPages);
+    }
+    rolePages.guardian.push("Guardian Notifications");
     const roleNames = {
       director: { en: "Director", km: "នាយកវិទ្យាស្ថាន" },
       deputy_director: { en: "Deputy Director", km: "នាយករងវិទ្យាស្ថាន" },
@@ -134,6 +139,12 @@
       "action.save": { en: "Add student", km: "បន្ថែមសិស្ស" },
       "search.placeholder": { en: "Search students, classes...", km: "ស្វែងរកសិស្ស ថ្នាក់..." },
       "topbar.notifications": { en: "Notifications", km: "ការជូនដំណឹង" },
+      "Room QR Cards": { en: "Room QR Cards", km: "កាត QR បន្ទប់" },
+      "Needs Review": { en: "Needs Review", km: "ត្រូវការពិនិត្យ" },
+      "Parent Chat Links": { en: "Parent Chat Links", km: "តំណភ្ជាប់ Telegram" },
+      "Notification Rules": { en: "Notification Rules", km: "ច្បាប់ការជូនដំណឹង" },
+      "Message Log": { en: "Message Log", km: "កំណត់ហេតុសារ" },
+      "Guardian Notifications": { en: "Guardian Notifications", km: "ការជូនដំណឹងអាណាព្យាបាល" },
       "topbar.language": { en: "Switch language", km: "ប្តូរភាសា" },
       "Dashboard": { en: "Dashboard", km: "ផ្ទាំងគ្រប់គ្រង" },
       "Students": { en: "Students", km: "សិស្ស" },
@@ -255,6 +266,23 @@
       return currentLanguage === "km" ? khmer : english;
     }
 
+    function appDateParts(value = new Date()) {
+      return Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+        timeZone: window.APP_TIMEZONE || "Asia/Phnom_Penh",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).formatToParts(value).map(part => [part.type, part.value]));
+    }
+
+    function formatAppTime(value) {
+      return new Intl.DateTimeFormat(currentLanguage === "km" ? "km" : "en", {
+        timeZone: window.APP_TIMEZONE || "Asia/Phnom_Penh",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(new Date(value));
+    }
+
     function updateUserProfile() {
       const profileName = document.querySelector(".profile-copy strong");
       const profileRole = document.querySelector(".profile-copy small");
@@ -302,6 +330,7 @@
         errorMessage.hidden = true;
         updateUserProfile();
         navigate("Overview", "Dashboard");
+        await refreshNotificationBell();
         showToast(`Welcome back, ${currentUser.name}.`);
       } catch (error) {
         console.error("Could not log in to the school management system.", error);
@@ -343,8 +372,7 @@
       document.documentElement.lang = language === "km" ? "km" : "en";
       const today = document.getElementById("today");
       if (today) {
-        const formatter = new Intl.DateTimeFormat(language === "km" ? "km" : "en", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
-        today.textContent = formatter.format(new Date());
+        today.textContent = new Intl.DateTimeFormat(language === "km" ? "km" : "en", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: window.APP_TIMEZONE || "Asia/Phnom_Penh" }).format(new Date());
       }
       nav.innerHTML = "";
       buildNavigation();
@@ -367,6 +395,7 @@
       else if (currentPage === "Daily Attendance") renderAttendance();
       else if (currentPage === "Attendance Reports") renderAttendanceReports();
       else if (currentPage === "Import from Excel") renderImportStudents();
+      else if (["Notification Rules", "Parent Chat Links", "Message Log", "Room QR Cards", "Needs Review", "Guardian Notifications"].includes(currentPage)) renderNotificationFeature(currentPage);
       else if (currentPage === "Bot Settings") renderTelegram("Bot Settings");
       else if (currentPage === "Notification Rules") renderTelegram("Notification Rules");
       else if (currentPage === "Parent Chat Links") renderTelegram("Parent Chat Links");
@@ -428,6 +457,46 @@
       return result;
     }
 
+    async function refreshNotificationBell() {
+      if (!currentUser) return;
+      try {
+        const data = await apiRequest("/api/notifications");
+        const count = document.getElementById("notification-count");
+        if (count) {
+          count.textContent = data.unread > 99 ? "99+" : String(data.unread || "");
+          count.hidden = !data.unread;
+        }
+      } catch (error) {
+        console.error("Could not refresh unread notification count.");
+      }
+    }
+
+    async function openNotifications(forceRefresh = false) {
+      const previous = document.getElementById("notification-panel");
+      if (previous) {
+        previous.remove();
+        if (!forceRefresh) return;
+      }
+      const panel = document.createElement("div");
+      panel.id = "notification-panel";
+      panel.className = "notification-panel";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-label", "Notifications");
+      panel.innerHTML = `<div class="notification-panel-head"><strong>Notifications</strong><button type="button" aria-label="Close notifications" data-action="close-notifications">×</button></div><div class="empty">Loading notifications...</div>`;
+      document.querySelector(".topbar")?.append(panel);
+      try {
+        const data = await apiRequest("/api/notifications");
+        const count = document.getElementById("notification-count");
+        if (count) {
+          count.textContent = data.unread > 99 ? "99+" : String(data.unread || "");
+          count.hidden = !data.unread;
+        }
+        panel.innerHTML = `<div class="notification-panel-head"><strong>Notifications${data.unread ? ` · ${data.unread} unread` : ""}</strong><button type="button" aria-label="Close notifications" data-action="close-notifications">×</button></div>${data.notifications.length ? data.notifications.map(item => `<article class="notification-item ${item.read_at ? "" : "unread"}"><p>${escapeHTML(item.body)}</p><small>${escapeHTML(new Date(item.created_at).toLocaleString())}</small>${item.read_at ? "" : `<button class="text-link" data-action="mark-notification-read" data-notification-id="${escapeAttribute(item.id)}">Mark read</button>`}</article>`).join("") : `<div class="empty">No notifications yet.</div>`}`;
+      } catch (error) {
+        panel.innerHTML = `<div class="notification-panel-head"><strong>Notifications</strong><button type="button" aria-label="Close notifications" data-action="close-notifications">×</button></div><div class="empty error-state">${escapeHTML(error.message)} <button data-action="reload-notifications" class="text-link">Retry</button></div>`;
+      }
+    }
+
     async function loadDatabaseData() {
       const activePage = currentPage || "Overview";
       if (activePage === "Student List") {
@@ -466,6 +535,7 @@
         await loadDatabaseData();
         updateUserProfile();
         navigate("Overview", "Dashboard");
+        await refreshNotificationBell();
       } catch (error) {
         if (error.message !== "Authentication required.") {
           console.error("Could not restore the school management session.", error);
@@ -871,8 +941,8 @@
     }
 
     function localDateValue() {
-      const now = new Date();
-      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const { year, month, day } = appDateParts();
+      return `${year}-${month}-${day}`;
     }
 
     function updateAttendanceClass() {
@@ -1218,6 +1288,68 @@
       content.innerHTML = pageHeader(page, descriptions[page] || descriptions["Bot Settings"]) + body;
     }
 
+    async function renderNotificationFeature(page) {
+      const title = page;
+      content.innerHTML = pageHeader(title, "Manage school notifications securely.") +
+        `<section class="panel"><div class="empty">Loading ${escapeHTML(title.toLowerCase())}...</div></section>`;
+      try {
+        if (page === "Guardian Notifications") {
+          const data = await apiRequest("/api/me/notification-preferences");
+          content.innerHTML = pageHeader(title, "Choose which attendance updates your family receives.") +
+            `<section class="panel"><div class="panel-head"><div><h2>Telegram connection</h2><p>${data.telegram_connected ? "Connected" : "Not connected"}</p></div><button class="btn ${data.telegram_connected ? "secondary" : ""}" data-action="${data.telegram_connected ? "disconnect-telegram" : "connect-telegram"}">${data.telegram_connected ? "Disconnect Telegram" : "Connect Telegram"}</button></div>
+            <div class="telegram-toggle-list">${data.students.map(student => `<div class="telegram-toggle"><span><strong>${escapeHTML(student.name || student.student_id)}</strong><small>${escapeHTML(student.student_id)}</small></span><span class="preference-actions"><label><input type="checkbox" data-action="guardian-preference" data-student-id="${escapeAttribute(student.student_id)}" data-preference="notify_scan" ${student.notify_scan ? "checked" : ""}> Present / late</label><label><input type="checkbox" data-action="guardian-preference" data-student-id="${escapeAttribute(student.student_id)}" data-preference="notify_absent" ${student.notify_absent ? "checked" : ""}> Absent / corrections</label></span></div>`).join("") || `<div class="empty">No linked children were found.</div>`}</div>
+            <div class="telegram-notice" style="margin-top:16px"><strong>Privacy:</strong> Messages include only your child's name and relevant class, subject, attendance status, time or date. They never include phone numbers, notes, or information about other children.</div></section>`;
+          return;
+        }
+        if (page === "Room QR Cards") {
+          const result = await apiRequest("/api/admin/rooms/qr");
+          content.innerHTML = pageHeader(title, "Print or replace classroom QR cards. Replacing a token invalidates the old card.") +
+            `<section class="panel"><div class="panel-head"><div><h2>Classroom QR cards</h2><p>Only authorized office and director accounts can view room tokens.</p></div><button class="btn secondary" data-action="print-room-cards">Print all rooms</button></div><div id="room-qr-grid" class="qr-grid">${result.rooms.map(room => `<article class="qr-card"><div class="qr-box" id="room-qr-${escapeAttribute(room.id)}"></div><div class="qr-meta"><strong>${escapeHTML(room.name)}</strong><button class="btn secondary" data-action="regenerate-room-qr" data-room-id="${escapeAttribute(room.id)}">Regenerate QR</button></div></article>`).join("") || `<div class="empty">No rooms are configured.</div>`}</div></section>`;
+          const QRCode = await getQrLibrary();
+          for (const room of result.rooms) {
+            const target = document.getElementById(`room-qr-${room.id}`);
+            if (target) {
+              const image = document.createElement("img");
+              image.alt = `QR code for ${room.name}`;
+              image.src = await QRCode.toDataURL(room.qr_token, { margin: 1, width: 170 });
+              target.append(image);
+            }
+          }
+          return;
+        }
+        if (page === "Needs Review") {
+          const result = await apiRequest("/api/admin/sessions/review");
+          const teacherOptions = teachers.map(teacher => `<option value="${escapeAttribute(teacher.id)}">${escapeHTML(teacher.nameEnglish || teacher.nameKhmer || teacher.name || teacher.id)}</option>`).join("");
+          content.innerHTML = pageHeader(title, "Resolve sessions that ended without a teacher check-in.") +
+            `<section class="panel"><div class="panel-head"><div><h2>Sessions needing review</h2><p>Assign a substitute or cancel the session. Students are not marked absent automatically.</p></div></div>${result.sessions.length ? result.sessions.map(session => `<article class="review-card"><div><strong>${escapeHTML(session.class_name)} · ${escapeHTML(session.subject_name || "Class session")}</strong><small>${escapeHTML(session.session_date)} · ${escapeHTML(String(session.start_time).slice(0, 5))}-${escapeHTML(String(session.end_time).slice(0, 5))} · ${escapeHTML(session.teacher_name || "Unassigned teacher")}</small></div><div class="inline-form"><select data-substitute-select="${escapeAttribute(session.session_id)}"><option value="">Select substitute teacher</option>${teacherOptions}</select><button class="btn" data-action="assign-substitute" data-session-id="${escapeAttribute(session.session_id)}">Assign</button><button class="btn secondary" data-action="cancel-session" data-session-id="${escapeAttribute(session.session_id)}">Cancel session</button></div><div class="inline-form"><input data-checkin-note="${escapeAttribute(session.session_id)}" maxlength="500" placeholder="Required note for office check-in"><button class="btn secondary" data-action="office-checkin" data-session-id="${escapeAttribute(session.session_id)}">Check in for teacher</button></div></article>`).join("") : `<div class="empty">No sessions need review.</div>`}</section>`;
+          return;
+        }
+        if (page === "Notification Rules") {
+          const result = await apiRequest("/api/admin/notification-rules");
+          const eventTypes = ["teacher_late", "teacher_late_2", "session_unresolved"];
+          const rules = result.rules || [];
+          content.innerHTML = pageHeader(title, "Choose which staff roles receive teacher and unresolved-session alerts.") +
+            `<form id="notification-rules-form"><section class="panel"><div class="telegram-toggle-list">${eventTypes.map(eventType => `<div class="rule-group"><h3>${escapeHTML(eventType.replaceAll("_", " "))}</h3>${result.roles.map(role => { const row = rules.find(rule => rule.event_type === eventType && rule.role === role); return `<label class="telegram-toggle"><span>${escapeHTML(role.replaceAll("_", " "))}</span><input type="checkbox" name="${escapeAttribute(eventType)}:${escapeAttribute(role)}" ${row?.is_enabled ? "checked" : ""}></label>`; }).join("")}</div>`).join("")}</div><div class="telegram-form-actions"><button type="submit" class="btn">Save notification rules</button></div></section></form>`;
+          return;
+        }
+        if (page === "Parent Chat Links") {
+          const result = await apiRequest("/api/admin/guardians");
+          content.innerHTML = pageHeader(title, "Generate a single-use Telegram start link for a guardian.") +
+            `<section class="panel"><div class="field"><label for="guardian-link-user">Guardian account</label><select id="guardian-link-user"><option value="">Select guardian</option>${result.guardians.map(guardian => `<option value="${escapeAttribute(guardian.id)}">${escapeHTML(guardian.full_name)}</option>`).join("")}</select></div><button class="btn" data-action="generate-guardian-link">Generate 30-minute link</button><p id="guardian-link-result" class="page-subtitle" aria-live="polite"></p><div class="telegram-notice"><strong>Privacy:</strong> The link is single-use and expires after 30 minutes. It is shown only here and is not saved in browser storage.</div></section>`;
+          return;
+        }
+        if (page === "Message Log") {
+          const result = await apiRequest("/api/admin/notifications?channel=telegram");
+          content.innerHTML = pageHeader(title, "Review Telegram delivery status and retry failed messages.") +
+            `<section class="panel"><div class="table-wrap"><table class="table"><thead><tr><th>Event</th><th>Message</th><th>Status</th><th>Attempts</th><th>Action</th></tr></thead><tbody>${result.notifications.map(item => `<tr><td>${escapeHTML(item.event_type)}</td><td>${escapeHTML(item.body)}</td><td>${escapeHTML(item.status)}</td><td>${item.attempts}</td><td>${item.status === "failed" && item.channel === "telegram" ? `<button class="btn secondary" data-action="resend-notification" data-notification-id="${escapeAttribute(item.id)}">Resend</button>` : "—"}</td></tr>`).join("") || `<tr><td colspan="5">No messages have been recorded.</td></tr>`}</tbody></table></div></section>`;
+          return;
+        }
+      } catch (error) {
+        content.innerHTML = pageHeader(title, "Manage school notifications securely.") +
+          `<section class="panel"><div class="empty error-state">${escapeHTML(error.message)}<button class="btn secondary" data-action="retry-current-page">Retry</button></div></section>`;
+      }
+    }
+
     const timetableKhmerTranslations = {
       "Classes": "ថ្នាក់រៀន",
       "Class timetable": "កាលវិភាគថ្នាក់រៀន",
@@ -1376,8 +1508,8 @@
 
     function dateLabel(value) {
       if (!value) return "";
-      const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
-      return Number.isNaN(date.valueOf()) ? String(value) : date.toLocaleDateString(currentLanguage === "km" ? "km" : "en");
+      const date = new Date(`${String(value).slice(0, 10)}T12:00:00Z`);
+      return Number.isNaN(date.valueOf()) ? String(value) : new Intl.DateTimeFormat(currentLanguage === "km" ? "km" : "en", { timeZone: window.APP_TIMEZONE || "Asia/Phnom_Penh" }).format(date);
     }
 
     function termOptions(terms, selectedId = "") {
@@ -1743,7 +1875,7 @@
           const attendanceAction = ["teacher", ...timetableManagerRoles, "dept_head", "dept_deputy"].includes(currentUser.role)
             ? `<button class="btn secondary" data-action="open-session" data-session-id="${session.session_id}">Attendance</button>`
             : "";
-          return `<article class="session-card"><div><strong>${escapeHTML(session.subject_name)}</strong><small>${escapeHTML(session.class_name)} · ${escapeHTML(session.starts_at ? new Date(session.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")}–${escapeHTML(session.ends_at ? new Date(session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")}</small><small>${escapeHTML(session.teacher_name || "")}${session.room ? ` · ${escapeHTML(session.room)}` : ""}</small></div>${attendanceAction}</article>`;
+          return `<article class="session-card"><div><strong>${escapeHTML(session.subject_name)}</strong><small>${escapeHTML(session.class_name)} · ${escapeHTML(session.starts_at ? formatAppTime(session.starts_at) : "")}–${escapeHTML(session.ends_at ? formatAppTime(session.ends_at) : "")}</small><small>${escapeHTML(session.teacher_name || "")}${session.room ? ` · ${escapeHTML(session.room)}` : ""}</small></div>${attendanceAction}</article>`;
         }).join("") : `<div class="empty">No generated sessions are scheduled for today.</div>`;
         content.innerHTML = pageHeader(title, subtitle, `<span class="badge active">${escapeHTML(term.name)} · ${escapeHTML(term.academic_year)}</span>`) +
           `<section class="panel timetable-panel"><div class="panel-head"><div><h2>Weekly schedule</h2><p>${slots.length} authorized timetable slots · shifts follow their configured weekday periods.</p></div></div>${weekGrid}</section>
@@ -1835,7 +1967,7 @@
           if (classPicker.value) query.set("class_id", classPicker.value);
           try {
             const result = await apiRequest(`/api/sessions?${query}`);
-            sessionPicker.innerHTML = `<option value="">${result.sessions.length ? "Select a session" : "No sessions for this date"}</option>${result.sessions.map(item => `<option value="${item.session_id}">${escapeHTML(item.starts_at ? new Date(item.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")} · ${escapeHTML(item.class_name)} · ${escapeHTML(item.subject_name)}</option>`).join("")}`;
+            sessionPicker.innerHTML = `<option value="">${result.sessions.length ? "Select a session" : "No sessions for this date"}</option>${result.sessions.map(item => `<option value="${item.session_id}">${escapeHTML(item.starts_at ? formatAppTime(item.starts_at) : "")} · ${escapeHTML(item.class_name)} · ${escapeHTML(item.subject_name)}</option>`).join("")}`;
             if (selectedAttendanceSessionId && result.sessions.some(item => String(item.session_id) === String(selectedAttendanceSessionId))) {
               sessionPicker.value = selectedAttendanceSessionId;
               await loadSessionAttendance(selectedAttendanceSessionId);
@@ -1857,7 +1989,7 @@
         });
         if (selectedAttendanceSessionId) await reload();
         else {
-          sessionPicker.innerHTML = `<option value="">${sessions.length ? "Select a session" : "No sessions for today"}</option>${sessions.map(item => `<option value="${item.session_id}">${escapeHTML(item.starts_at ? new Date(item.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "")} · ${escapeHTML(item.class_name)} · ${escapeHTML(item.subject_name)}</option>`).join("")}`;
+          sessionPicker.innerHTML = `<option value="">${sessions.length ? "Select a session" : "No sessions for today"}</option>${sessions.map(item => `<option value="${item.session_id}">${escapeHTML(item.starts_at ? formatAppTime(item.starts_at) : "")} · ${escapeHTML(item.class_name)} · ${escapeHTML(item.subject_name)}</option>`).join("")}`;
           if (sessions.length === 1) {
             sessionPicker.value = String(sessions[0].session_id);
             selectedAttendanceSessionId = sessionPicker.value;
@@ -1878,10 +2010,17 @@
         const { session, roster } = await apiRequest(`/api/sessions/attendance?session_id=${encodeURIComponent(sessionId)}`);
         const canRecord = ["director", "deputy_director", "office_head", "office_deputy", "office_staff", "dept_head", "dept_deputy", "teacher"].includes(currentUser?.role);
         const recordedCount = roster.filter(student => student.status).length;
-        detail.innerHTML = `<div class="session-summary"><div><strong>${escapeHTML(session.class_name || `Class ${session.class_id}`)} · ${escapeHTML(session.subject_name || "Class session")}</strong><small>${dateLabel(session.session_date)} · ${session.starts_at ? new Date(session.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}–${session.ends_at ? new Date(session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</small></div><span class="badge ${recordedCount === roster.length && roster.length ? "active" : "pending"}">${recordedCount}/${roster.length} recorded</span></div>
+        detail.innerHTML = `<div class="session-summary"><div><strong>${escapeHTML(session.class_name || `Class ${session.class_id}`)} · ${escapeHTML(session.subject_name || "Class session")}</strong><small>${dateLabel(session.session_date)} · ${session.starts_at ? formatAppTime(session.starts_at) : ""}–${session.ends_at ? formatAppTime(session.ends_at) : ""}</small></div><span class="badge ${recordedCount === roster.length && roster.length ? "active" : "pending"}">${recordedCount}/${roster.length} recorded</span></div>
           ${canRecord ? `<div class="attendance-controls"><button type="button" class="btn secondary" data-action="mark-session-present">Mark all present</button><button type="button" class="btn" data-action="save-session-attendance" data-session-id="${sessionId}">Save attendance</button><button type="button" class="btn secondary" data-action="close-session-attendance" data-session-id="${sessionId}">Close session / mark remaining absent</button></div>
           <div class="qr-scan-panel"><div class="field"><label for="qr-student-id">Scan QR code or enter student ID</label><div class="inline-form"><input id="qr-student-id" autocomplete="off" placeholder='{"type":"attendance","id":"..."}'><button class="btn secondary" data-action="submit-qr-scan" data-session-id="${sessionId}">Record scan</button><button class="btn secondary" data-action="start-qr-camera">Use camera</button></div></div><video id="qr-camera" class="qr-camera" playsinline hidden></video><p id="qr-scan-status" class="page-subtitle" aria-live="polite"></p></div>` : ""}
           ${roster.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Student</th><th>Status</th>${canRecord ? "<th>Mark status</th>" : ""}</tr></thead><tbody>${roster.map(student => `<tr data-session-student="${escapeAttribute(student.student_id)}"><td>${escapeHTML(student.name_english || student.name_khmer || student.student_id)}<small class="table-subtext">${escapeHTML(student.student_id)}</small></td><td>${escapeHTML(student.status || "Not recorded")}${student.source ? ` · ${escapeHTML(student.source)}` : ""}</td>${canRecord ? `<td><select class="session-status-select" aria-label="Attendance status for ${escapeAttribute(student.student_id)}"><option value="">Select status</option>${["present", "absent", "late", "excused"].map(status => `<option value="${status}" ${student.status === status ? "selected" : ""}>${status}</option>`).join("")}</select></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="empty">No students are enrolled in this class.</div>`}`;
+        if (currentUser?.role === "teacher" &&
+            (currentUser.teacher_id === session.teacher_id || currentUser.teacher_id === session.substitute_teacher_id)) {
+          const checkin = document.createElement("section");
+          checkin.className = "teacher-checkin panel";
+          checkin.innerHTML = `<div><strong>Teacher check-in</strong><small>${session.teacher_checkin_at ? `Checked in: ${escapeHTML(formatAppTime(session.teacher_checkin_at))}` : "Scan the room QR with this phone camera."}</small></div><button class="btn" data-action="teacher-room-checkin" data-session-id="${escapeAttribute(sessionId)}" ${session.teacher_checkin_at ? "disabled" : ""}>${session.teacher_checkin_at ? "Checked in" : "Check in with room QR"}</button><video id="teacher-checkin-camera" class="qr-camera" playsinline hidden></video><p id="teacher-checkin-status" class="page-subtitle" aria-live="polite"></p>`;
+          detail.prepend(checkin);
+        }
         const scanInput = document.getElementById("qr-student-id");
         if (scanInput) scanInput.addEventListener("keydown", event => {
           if (event.key === "Enter") {
@@ -1990,6 +2129,66 @@
       }
     }
 
+    async function submitTeacherCheckin(sessionId, token) {
+      const status = document.getElementById("teacher-checkin-status");
+      try {
+        const result = await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/checkin`, {
+          method: "POST",
+          body: JSON.stringify({ room_qr_token: token })
+        });
+        if (status) status.textContent = result.already ? "You are already checked in." : "Teacher check-in recorded.";
+        await loadSessionAttendance(sessionId);
+      } catch (error) {
+        if (status) status.textContent = error.message;
+        showToast(error.message);
+      }
+    }
+
+    async function startTeacherCheckinCamera(sessionId) {
+      const status = document.getElementById("teacher-checkin-status");
+      if (!window.isSecureContext) {
+        if (status) status.textContent = "Camera check-in requires HTTPS. Open this page using the secure school link.";
+        return;
+      }
+      if (!("BarcodeDetector" in window) || !navigator.mediaDevices?.getUserMedia) {
+        if (status) status.textContent = "QR camera scanning is unavailable. Use a supported browser or ask the office to check you in.";
+        return;
+      }
+      try {
+        stopQrCamera();
+        const video = document.getElementById("teacher-checkin-camera");
+        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+        qrMediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        video.srcObject = qrMediaStream;
+        video.hidden = false;
+        await video.play();
+        if (status) status.textContent = "Camera active. Scan the QR card for this room.";
+        const scanFrame = async () => {
+          if (!video.isConnected || video.hidden || !qrMediaStream) return;
+          try {
+            const codes = await detector.detect(video);
+            if (codes.length && codes[0].rawValue) {
+              const token = codes[0].rawValue.trim();
+              stopQrCamera();
+              await submitTeacherCheckin(sessionId, token);
+              return;
+            }
+          } catch {
+            if (status) status.textContent = "Could not read the QR code. Hold it steady and try again.";
+          }
+          window.requestAnimationFrame(scanFrame);
+        };
+        window.requestAnimationFrame(scanFrame);
+      } catch (error) {
+        stopQrCamera();
+        if (status) {
+          status.textContent = error.name === "NotAllowedError"
+            ? "Camera access was denied. Allow camera access for this site, then retry."
+            : "Could not open the camera. Check browser permissions and try again.";
+        }
+      }
+    }
+
     async function renderMyAttendance() {
       const title = "My attendance";
       const subtitle = "Review session attendance for your account or linked children.";
@@ -1997,8 +2196,8 @@
       try {
         const termData = await apiRequest("/api/terms");
         const currentTerm = termData.terms.find(term => term.is_current) || termData.terms[0];
-        const now = new Date();
-        const monthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const { year, month } = appDateParts();
+        const monthValue = `${year}-${month}`;
         content.innerHTML = pageHeader(title, subtitle) +
           `<section class="panel timetable-panel"><div class="attendance-controls"><div class="field"><label for="history-month">Month</label><input id="history-month" type="month" value="${monthValue}"></div><div class="field"><label for="history-term">Term</label><select id="history-term">${termOptions(termData.terms, currentTerm?.id)}</select></div><button class="btn" data-action="load-my-attendance">Load history</button></div><div id="my-attendance-results"><div class="empty">Choose a month and term.</div></div></section>`;
         await loadMyAttendanceHistory(monthValue, currentTerm?.id);
@@ -2083,6 +2282,7 @@
       else if (page === "Attendance Reports") renderAttendanceReports();
       else if (page === "User Management") renderUsers();
       else if (page === "My Account") renderMyAccount();
+      else if (["Notification Rules", "Parent Chat Links", "Message Log", "Room QR Cards", "Needs Review", "Guardian Notifications"].includes(page)) renderNotificationFeature(page);
       else if (["Bot Settings", "Notification Rules", "Parent Chat Links", "Message Log"].includes(page)) renderTelegram(page);
       else renderModule(page);
     }
@@ -2207,7 +2407,7 @@
     document.getElementById("language-toggle").addEventListener("click", () => {
       setLanguage(currentLanguage === "en" ? "km" : "en");
     });
-    document.getElementById("today").textContent = new Intl.DateTimeFormat(initialLanguage === "km" ? "km" : "en", { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(new Date());
+    document.getElementById("today").textContent = new Intl.DateTimeFormat(initialLanguage === "km" ? "km" : "en", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: window.APP_TIMEZONE || "Asia/Phnom_Penh" }).format(new Date());
     document.getElementById("logout-button").addEventListener("click", logout);
     document.getElementById("login-form").addEventListener("submit", handleLogin);
     document.getElementById("login-form").addEventListener("input", () => {
@@ -2239,12 +2439,19 @@
     });
     document.addEventListener("click", async event => {
       if (!currentUser) return;
+      if (!event.target.closest("#notification-panel, #notification-button")) {
+        document.getElementById("notification-panel")?.remove();
+      }
       if (!event.target.closest(".search-wrap")) closeSearch();
       const page = event.target.closest("[data-page]");
       if (page) navigate(page.dataset.page);
       const action = event.target.closest("[data-action]");
       if (!action) return;
-      if (action.dataset.action === "add-student") openStudentModal();
+      if (action.dataset.action === "close-notifications") {
+        document.getElementById("notification-panel")?.remove();
+      } else if (action.dataset.action === "reload-notifications") {
+        await openNotifications(true);
+      } else if (action.dataset.action === "add-student") openStudentModal();
       else if (action.dataset.action === "add-teacher") openTeacherModal();
       else if (action.dataset.action === "retry-data-load") {
         try {
@@ -2291,7 +2498,100 @@
           showToast(error.message);
         }
       }
-      else if (action.dataset.action === "test-telegram") showToast("No Telegram backend is connected. Add a secure server endpoint to send messages.");
+      else if (action.dataset.action === "test-telegram") showToast("Telegram delivery is managed by the secure server configuration.");
+      else if (action.dataset.action === "teacher-room-checkin") {
+        await startTeacherCheckinCamera(action.dataset.sessionId);
+      } else if (action.dataset.action === "office-checkin") {
+        const sessionId = action.dataset.sessionId;
+        const note = document.querySelector(`[data-checkin-note="${CSS.escape(sessionId)}"]`)?.value.trim();
+        if (!note) {
+          showToast("Enter a note before checking in for the teacher.");
+          return;
+        }
+        try {
+          await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/checkin`, {
+            method: "POST",
+            body: JSON.stringify({ note })
+          });
+          showToast("Teacher check-in recorded.");
+          await renderNotificationFeature("Needs Review");
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "assign-substitute") {
+        const sessionId = action.dataset.sessionId;
+        const substituteId = document.querySelector(`[data-substitute-select="${CSS.escape(sessionId)}"]`)?.value;
+        if (!substituteId) {
+          showToast("Select a substitute teacher.");
+          return;
+        }
+        try {
+          await apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/substitute`, {
+            method: "POST",
+            body: JSON.stringify({ substitute_teacher_id: substituteId })
+          });
+          showToast("Substitute assigned.");
+          await renderNotificationFeature("Needs Review");
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "cancel-session") {
+        if (!window.confirm("Cancel this class session?")) return;
+        try {
+          await apiRequest(`/api/sessions/${encodeURIComponent(action.dataset.sessionId)}/cancel`, { method: "POST" });
+          showToast("Session cancelled.");
+          await renderNotificationFeature("Needs Review");
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "connect-telegram") {
+        try {
+          const link = await apiRequest("/api/me/telegram-link", { method: "POST", body: JSON.stringify({}) });
+          window.location.assign(link.url);
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "disconnect-telegram") {
+        try {
+          await apiRequest("/api/me/telegram-link", { method: "DELETE" });
+          await renderNotificationFeature("Guardian Notifications");
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "generate-guardian-link") {
+        const guardianId = document.getElementById("guardian-link-user")?.value;
+        if (!guardianId) {
+          showToast("Select a guardian account.");
+          return;
+        }
+        try {
+          const link = await apiRequest("/api/me/telegram-link", {
+            method: "POST",
+            body: JSON.stringify({ guardian_user_id: guardianId })
+          });
+          const target = document.getElementById("guardian-link-result");
+          const parsedLink = new URL(link.url);
+          if (parsedLink.hostname !== "t.me") throw new Error("The server returned an invalid Telegram link.");
+          target.replaceChildren();
+          target.append(document.createTextNode("One-time link: "));
+          const anchor = document.createElement("a");
+          anchor.href = parsedLink.href;
+          anchor.textContent = parsedLink.href;
+          anchor.target = "_blank";
+          anchor.rel = "noopener noreferrer";
+          target.append(anchor);
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "resend-notification") {
+        try {
+          await apiRequest(`/api/admin/notifications/${encodeURIComponent(action.dataset.notificationId)}/resend`, { method: "POST" });
+          showToast("Notification queued for retry.");
+          await renderNotificationFeature("Message Log");
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "regenerate-room-qr") {
+        if (!window.confirm("Regenerate this room QR? The old printed card will stop working.")) return;
+        try {
+          await apiRequest(`/api/admin/rooms/${encodeURIComponent(action.dataset.roomId)}/regenerate`, { method: "POST" });
+          await renderNotificationFeature("Room QR Cards");
+          showToast("Room QR regenerated. Print the new card.");
+        } catch (error) { showToast(error.message); }
+      } else if (action.dataset.action === "print-room-cards") {
+        window.print();
+      } else if (action.dataset.action === "mark-notification-read") {
+        try {
+          await apiRequest(`/api/notifications/${encodeURIComponent(action.dataset.notificationId)}/read`, { method: "POST" });
+          await openNotifications();
+        } catch (error) { showToast(error.message); }
+      }
       else if (action.dataset.action === "copy-parent-instructions") {
         const username = telegramConfig.botUsername ? `@${telegramConfig.botUsername}` : "your school bot";
         const instructions = `To link your child's school account: open ${username} in Telegram, tap Start, then enter the one-time linking code provided by the school. Never share your Telegram password or bot token.`;
@@ -2593,6 +2893,37 @@
         const saved = saveTelegramConfig();
         renderTelegram("Notification Rules");
         if (saved) showToast("Notification preferences saved in this browser.");
+      } else if (event.target.id === "notification-rules-form") {
+        event.preventDefault();
+        const rules = [...event.target.querySelectorAll('input[type="checkbox"]')].map(input => {
+          const [event_type, role] = input.name.split(":");
+          return { event_type, role, is_enabled: input.checked };
+        });
+        try {
+          await apiRequest("/api/admin/notification-rules", {
+            method: "PUT",
+            body: JSON.stringify({ rules })
+          });
+          showToast("Notification rules saved.");
+        } catch (error) { showToast(error.message); }
+      }
+    });
+    document.addEventListener("change", async event => {
+      const input = event.target.closest('input[data-action="guardian-preference"]');
+      if (!input) return;
+      const previous = !input.checked;
+      try {
+        await apiRequest("/api/me/notification-preferences", {
+          method: "PATCH",
+          body: JSON.stringify({
+            student_id: input.dataset.studentId,
+            [input.dataset.preference]: input.checked
+          })
+        });
+        showToast("Notification preference saved.");
+      } catch (error) {
+        input.checked = previous;
+        showToast(error.message);
       }
     });
     document.getElementById("student-form").addEventListener("submit", async event => {
@@ -2707,10 +3038,11 @@
         closeTeacherModal();
       }
     });
-    document.getElementById("notification-button").addEventListener("click", () => showToast("You're all caught up on notifications."));
+    document.getElementById("notification-button").addEventListener("click", () => openNotifications());
     document.querySelectorAll("[data-footer]").forEach(link => link.addEventListener("click", event => {
       event.preventDefault();
       showToast(`${link.dataset.footer} information coming soon.`);
     }));
     restoreSession();
+    window.setInterval(refreshNotificationBell, 60_000);
   

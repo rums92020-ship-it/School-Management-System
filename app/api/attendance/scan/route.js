@@ -12,6 +12,7 @@ import {
 } from "../../../../lib/timetable";
 import { scheduleNotificationDelivery } from "../../../../lib/notifications";
 import { enqueueStudentScan, writeAttendanceAudit } from "../../../../lib/session-notifications";
+import { rateLimit } from "../../../../lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,9 @@ function readStudentId(body) {
 }
 
 export async function POST(request) {
+  if (!rateLimit(request, "attendance-scan", 30, 60_000)) {
+    return jsonError("Too many scan attempts. Try again shortly.", 429);
+  }
   try {
     const { user, response } = await requireRole(scannerRoles);
     if (response) return response;

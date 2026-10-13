@@ -32,11 +32,12 @@ function loadDashboardScripts() {
   return appScriptPromise;
 }
 
-export default function LegacyDashboard({ markup }) {
+export default function LegacyDashboard({ markup, timeZone }) {
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let active = true;
+    window.APP_TIMEZONE = timeZone;
 
     loadDashboardScripts().catch((error) => {
       console.error("Could not start the school management dashboard.", error);

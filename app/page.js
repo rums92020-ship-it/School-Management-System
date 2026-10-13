@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import LegacyDashboard from "./legacy-dashboard";
+import { APP_TIMEZONE } from "../lib/app-constants";
 
 const source = readFileSync(join(process.cwd(), "index.html"), "utf8");
 const body = source.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -12,5 +13,5 @@ if (!body) {
 const markup = body[1].replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
 
 export default function HomePage() {
-  return <LegacyDashboard markup={markup} />;
+  return <LegacyDashboard markup={markup} timeZone={APP_TIMEZONE} />;
 }

@@ -90,7 +90,10 @@ export async function GET(request) {
         subjects.name AS subject_name,
         COALESCE(sessions.teacher_id, slots.teacher_id) AS teacher_id,
         teachers.name AS teacher_name, COALESCE(sessions.room, slots.room) AS room,
-        shifts.code AS shift_code, sessions.status
+        shifts.code AS shift_code, sessions.status,
+        sessions.teacher_checkin_at, sessions.teacher_checkin_method,
+        COALESCE(sessions.teacher_id, slots.teacher_id) AS session_teacher_id,
+        sessions.substitute_teacher_id, sessions.needs_review
        FROM class_sessions AS sessions
        JOIN classes ON classes.id = sessions.class_id
        JOIN shifts ON shifts.id = classes.shift_id
